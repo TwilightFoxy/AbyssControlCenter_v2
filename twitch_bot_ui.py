@@ -92,18 +92,43 @@ class TwitchBotApp(QMainWindow):
         # Загрузка данных из config.env
         self.load_config()
 
-        links_layout = QVBoxLayout()
-        links_layout.addStretch()  # Добавляем растяжение перед ссылками для размещения их внизу
+        # Создаем горизонтальный макет для размещения изображения и ссылок в одной строке
+        bottom_layout = QHBoxLayout()
 
+        # Макет для ссылок
+        links_layout = QVBoxLayout()
+        oauth_token_label = QLabel("TWITCH_OAUTH_TOKEN:")
         twitchapps_link = QLabel('<a href="https://twitchapps.com">twitchapps.com</a>')
         twitchapps_link.setOpenExternalLinks(True)
-        links_layout.addWidget(twitchapps_link)
 
-        devtwitch_link = QLabel('<a href="https://dev.twitch.tv/console/apps/create">dev.twitch.tv/console/apps/create</a>')
+        client_id_secret_label = QLabel("TWITCH_CLIENT_ID/SECRET:")
+        devtwitch_link = QLabel(
+            '<a href="https://dev.twitch.tv/console/apps/create">dev.twitch.tv/console/apps/create</a>')
         devtwitch_link.setOpenExternalLinks(True)
-        links_layout.addWidget(devtwitch_link)
 
-        layout.addLayout(links_layout)
+        links_layout.addWidget(oauth_token_label)
+        links_layout.addWidget(twitchapps_link)
+        links_layout.addWidget(client_id_secret_label)
+        links_layout.addWidget(devtwitch_link)
+        links_layout.addStretch()  # Добавляем растяжение после ссылок для правильного позиционирования
+
+        # Настройка ширины макета с ссылками
+        links_widget = QWidget()
+        links_widget.setLayout(links_layout)
+        links_widget.setFixedWidth(self.width() // 3)  # Устанавливаем ширину треть ширины окна
+
+        # Макет для изображения
+        image_label = QLabel()
+        pixmap = QPixmap("Resources/Phantom.png")
+        image_label.setPixmap(pixmap)
+        image_label.setAlignment(Qt.AlignTop)  # Выравниваем по верхнему краю
+
+        # Добавляем макеты в горизонтальный макет
+        bottom_layout.addWidget(links_widget)
+        bottom_layout.addWidget(image_label)
+        bottom_layout.addStretch()  # Добавляем растяжение после изображения для правильного позиционирования
+
+        layout.addLayout(bottom_layout)
         self.connect_tab.setLayout(layout)
 
     def load_config(self):
