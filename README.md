@@ -1,12 +1,50 @@
 # Coffee Bot
-It's a simple chat bot for Twitch.tv.
+Простой чат-бот для Twitch.tv в помощь безднаботам.
 
-It will implement Google Docs and Twitch APIs for:
-1. Handling chat commands
-2. Listening to channel awards
-3. Edit Google Table
+Он будет использовать Google Docs и Twitch API для:
+1. Обработки команд в чате
+2. Прослушивания наград канала
+3. Редактирования таблицы Google
 
-# How to contribute
-Just [fork this repository](https://github.com/TwilightFoxy/coffee_bot/fork)
+# Как внести вклад
+Просто [сделайте форк этого репозитория](https://github.com/TwilightFoxy/coffee_bot/fork)
 
-And, after some changes, create a pull request.
+После внесения изменений создайте pull request.
+
+
+## Как подключить Google Таблицу?
+
+Чтобы настроить учетную запись службы в Google Cloud Console, выполните следующие шаги:
+
+1. **Создание учетной записи службы:**
+    - Перейдите в Google Cloud Console.
+    - Введите имя учетной записи службы:
+      ```text
+      Service account name (Имя учетной записи службы): Введите описательное имя, например, twitch-bot-service-account.
+      Service account ID (Идентификатор учетной записи службы): Он будет автоматически заполняться на основе введенного имени.
+      Service account description (Описание учетной записи службы): Это поле необязательно, но вы можете добавить описание, чтобы было понятно, для чего используется эта учетная запись, например, Service account for Twitch bot accessing Google Sheets.
+      ```
+    - Нажмите **Create and continue** (Создать и продолжить).
+
+2. **Предоставление доступа к проекту (опционально):**
+    - На этом шаге вы можете указать роли, которые нужны вашей учетной записи службы для выполнения необходимых операций.
+    - Например, выберите роль **Editor** (Редактор) или **Owner** (Владелец), чтобы обеспечить доступ к Google Sheets и другим необходимым ресурсам.
+    - Нажмите **Continue** (Продолжить).
+
+3. **Предоставление доступа пользователям (опционально):**
+    - Этот шаг можно пропустить, если вам не нужно предоставлять доступ другим пользователям.
+    - Нажмите **Done** (Готово).
+
+4. **Создание и загрузка JSON ключа:**
+    - Перейдите на вкладку **Keys** (Ключи) учетной записи службы.
+    - Нажмите **Add Key** (Добавить ключ) и выберите **Create New Key** (Создать новый ключ).
+    - Выберите формат **JSON** и нажмите **Create** (Создать).
+    - Скачанный файл переименуйте в `access.json` и сохраните в корневую директорию вашего проекта.
+
+5. **Активация Google Sheets API:**
+    - Перейдите по ссылкам: [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com) и [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com) и активируйте их.
+
+6. **Предоставление доступа к Google Таблице:**
+    - Откройте Google Таблицу и предоставьте доступ на редактирование адресу электронной почты, указанному в строке `client_email` вашего `access.json` файла.
+
+Следуя этим шагам, вы настроите учетную запись службы для доступа к Google Таблице и сможете использовать ее в своем проекте.
