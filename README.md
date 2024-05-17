@@ -59,19 +59,25 @@
 
 1. **Создание приложения на Twitch Developer Portal:**
     - Перейдите на [Twitch Developer Console](https://dev.twitch.tv/console/apps).
-    - Нажмите **Register Your Application**.
+    - ![image](https://github.com/TwilightFoxy/coffee_bot/assets/62305710/be86589a-8569-4282-abf0-a552016357d9)
+
+    - Нажмите **Register Your Application** (Подать заявку).
     - Заполните форму регистрации приложения:
       ```text
-      Name (Имя): Введите имя вашего приложения, например, Coffee Bot.
+      Name (Имя): Введите имя вашего приложения, например, Coffee Bot. Оно будет отображаться только в ващей Твич консоли.
       OAuth Redirect URLs (URL для перенаправления OAuth): Введите http://localhost.
-      Category (Категория): Выберите категорию, например, Chat Bot.
+      Category (Категория): Выберите категорию, Chat Bot.
       ```
     - Нажмите **Create** (Создать).
 
+![image](https://github.com/TwilightFoxy/coffee_bot/assets/62305710/3a35d67c-8436-491f-a0bc-3af006c3f136)
+
+![image](https://github.com/TwilightFoxy/coffee_bot/assets/62305710/fb2b298d-c2c1-4ae6-b686-1092e84f69c8)
+
 2. **Получение OAuth токена:**
     - После создания приложения вы увидите `Client ID` и `Client Secret`.
-    - Занесите эти значения в приложение
-    - Перейдите по ссылке "Получить ключ активации" прямо в приложении
+    - Занесите эти значения в приложение.
+    - Перейдите по ссылке "Получить ключ активации" прямо в приложении.
     - Авторизуйтесь и получите OAuth токен.
 
 3. **Заполнение конфигурации в приложении:**
