@@ -71,40 +71,87 @@ class TwitchBotApp(QMainWindow):
         self.init_queue_tab()
         self.init_additional_tab()
 
+        # self.queue_update_timer = QTimer(self)
+        # self.queue_update_timer.timeout.connect(self.update_queues)
+        # self.queue_update_timer.start(60000)
+
     def init_main_tab(self):
         layout = QVBoxLayout()
         self.main_tab.setLayout(layout)
 
+        # Кнопка запуска/остановки бота
         self.start_button = QPushButton("Start Bot")
-        self.start_button.setStyleSheet("background-color: green; color: white;")
+        self.start_button.setStyleSheet("""
+            QPushButton {
+                background-color: green;
+                color: white;
+                font-size: 16px;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #005500;
+            }
+        """)
         self.start_button.clicked.connect(self.toggle_bot)
-        layout.addWidget(self.start_button)
+        layout.addWidget(self.start_button, alignment=Qt.AlignCenter)
 
-        status_layout = QHBoxLayout()
+        # Статусы
+        status_group_box = QFrame()
+        status_group_box.setFrameShape(QFrame.StyledPanel)
+        status_group_box.setStyleSheet("""
+            QFrame {
+                background-color: rgba(255, 255, 255, 200);
+                border-radius: 10px;
+                padding: 10px;
+            }
+        """)
+        status_layout = QVBoxLayout()
+        status_group_box.setLayout(status_layout)
 
         self.chatbot_status_label = QLabel("Chat Bot: OFF", self.main_tab)
-        status_layout.addWidget(self.chatbot_status_label)
+        self.chatbot_status_label.setStyleSheet("font-size: 14px; color: red;")
+        status_layout.addWidget(self.chatbot_status_label, alignment=Qt.AlignCenter)
 
         self.login_info_label = QLabel("", self.main_tab)
-        status_layout.addWidget(self.login_info_label)
+        self.login_info_label.setStyleSheet("font-size: 14px; color: red;")
+        status_layout.addWidget(self.login_info_label, alignment=Qt.AlignCenter)
 
         self.connection_status_label = QLabel("Connection: OFF", self.main_tab)
-        status_layout.addWidget(self.connection_status_label)
+        self.connection_status_label.setStyleSheet("font-size: 14px; color: red;")
+        status_layout.addWidget(self.connection_status_label, alignment=Qt.AlignCenter)
 
         self.channel_info_label = QLabel("", self.main_tab)
-        status_layout.addWidget(self.channel_info_label)
+        self.channel_info_label.setStyleSheet("font-size: 14px; color: red;")
+        status_layout.addWidget(self.channel_info_label, alignment=Qt.AlignCenter)
 
-        layout.addLayout(status_layout)
+        layout.addWidget(status_group_box)
 
-        document_layout = QHBoxLayout()
+        # Документ и лист
+        document_group_box = QFrame()
+        document_group_box.setFrameShape(QFrame.StyledPanel)
+        document_group_box.setStyleSheet("""
+            QFrame {
+                background-color: rgba(255, 255, 255, 200);
+                border-radius: 10px;
+                padding: 10px;
+            }
+        """)
+        document_layout = QVBoxLayout()
+        document_group_box.setLayout(document_layout)
 
         self.document_status_label = QLabel(f"Document: {os.getenv('SPREADSHEET_NAME')}", self.main_tab)
-        document_layout.addWidget(self.document_status_label)
+        self.document_status_label.setStyleSheet("font-size: 14px; color: blue;")
+        document_layout.addWidget(self.document_status_label, alignment=Qt.AlignCenter)
 
         self.sheet_status_label = QLabel(f"Sheet: {os.getenv('WORKSHEET_NAME')}", self.main_tab)
-        document_layout.addWidget(self.sheet_status_label)
+        self.sheet_status_label.setStyleSheet("font-size: 14px; color: blue;")
+        document_layout.addWidget(self.sheet_status_label, alignment=Qt.AlignCenter)
 
-        layout.addLayout(document_layout)
+        layout.addWidget(document_group_box)
+
+        # Дополнительное пространство для эстетики
+        layout.addStretch()
 
     def toggle_bot(self):
         if self.start_button.text() == "Start Bot":
@@ -191,13 +238,10 @@ class TwitchBotApp(QMainWindow):
         form_layout.addWidget(save_button)
         layout.addLayout(form_layout)
 
-        # Загрузка данных из config.env
         self.load_config()
 
-        # Создаем горизонтальный макет для размещения изображения и ссылок в одной строке
         bottom_layout = QHBoxLayout()
 
-        # Макет для ссылок
         links_layout = QVBoxLayout()
         oauth_token_label = QLabel("TWITCH_OAUTH_TOKEN:")
         auth_url = (
@@ -315,7 +359,6 @@ class TwitchBotApp(QMainWindow):
         form_layout.addWidget(add_button)
         layout.addLayout(form_layout)
 
-        # Прокручиваемая область для команд
         self.commands_list_widget = QWidget()
         self.commands_list_layout = QVBoxLayout()
         self.commands_list_widget.setLayout(self.commands_list_layout)
@@ -326,7 +369,6 @@ class TwitchBotApp(QMainWindow):
 
         layout.addWidget(scroll_area)
 
-        # Добавление заголовков столбцов
         header_frame = QFrame()
         header_layout = QHBoxLayout()
         header_frame.setLayout(header_layout)
@@ -399,27 +441,22 @@ class TwitchBotApp(QMainWindow):
         layout = QHBoxLayout()
         self.queue_tab.setLayout(layout)
 
-        # Подключение к Google Sheets
         self.worksheet = connect_to_google_sheets()
 
-        # Управление очередью
         control_layout = QVBoxLayout()
         control_layout.setAlignment(Qt.AlignTop)
 
-        # Заголовок
         label = QLabel("Очередь", self.queue_tab)
         control_layout.addWidget(label, alignment=Qt.AlignTop)
 
-        # Автоматическое удаление или пометка
         auto_process_layout = QHBoxLayout()
         self.first_user_label = QLabel("[Имя первого пользователя] - [Статус]")
-        self.mark_button = QPushButton("Пометить")
+        self.mark_button = QPushButton("Отметить")
         self.mark_button.clicked.connect(lambda: self.mark_first_user_as_completed())
         auto_process_layout.addWidget(self.first_user_label)
         auto_process_layout.addWidget(self.mark_button)
         control_layout.addLayout(auto_process_layout)
 
-        # Добавить пользователя
         add_user_group = QVBoxLayout()
         self.add_user_label = QLabel("Добавить пользователя")
         add_user_form_layout = QHBoxLayout()
@@ -435,7 +472,6 @@ class TwitchBotApp(QMainWindow):
         add_user_group.addLayout(add_user_form_layout)
         control_layout.addLayout(add_user_group)
 
-        # Удалить пользователя
         remove_user_group = QVBoxLayout()
         self.remove_user_label = QLabel("Отметить пользователя")
         remove_user_form_layout = QHBoxLayout()
@@ -451,7 +487,6 @@ class TwitchBotApp(QMainWindow):
         remove_user_group.addLayout(remove_user_form_layout)
         control_layout.addLayout(remove_user_group)
 
-        # Скрыть пройденные
         self.hide_completed_checkbox = QCheckBox("Скрыть пройденные")
         self.hide_completed_checkbox.stateChanged.connect(lambda: self.update_queues())
         control_layout.addWidget(self.hide_completed_checkbox)
@@ -537,18 +572,13 @@ class TwitchBotApp(QMainWindow):
 
     def save_auto_add_command(self):
         command = self.auto_add_command_input.text().strip()
+        self.show_toast("В разработке")
         # Логика сохранения команды для автоматического добавления пользователей
         print(f"Сохранена команда: {command}")
 
     def update_queues(self):
-        # Загрузка данных из config.env
-        os.environ['SPREADSHEET_NAME'] = self.spreadsheet_name_input.text()
-        os.environ['WORKSHEET_NAME'] = self.worksheet_name_input.text()
-
-        # Подключение к Google Sheets с новыми данными
         self.worksheet = connect_to_google_sheets()
 
-        # Обновление очередей
         vip_queue, normal_queue = get_queues(self.worksheet)
 
         self.normal_queue_list.clear()
@@ -575,7 +605,7 @@ class TwitchBotApp(QMainWindow):
             self.first_user_label.setText("[Нет ожидающих пользователей]")
 
     def export_to_csv(self):
-        # Логика экспорта очереди в CSV
+        self.show_toast("В разработке. Ну точнее мне пока лень, но если кому-то понадобится сделаю")
         print("Экспорт в CSV")
 
     def init_additional_tab(self):

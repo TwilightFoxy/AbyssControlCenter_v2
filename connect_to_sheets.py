@@ -58,19 +58,21 @@ def add_to_queue(worksheet, username, queue_type):
 
 def get_position(worksheet, username):
     data = worksheet.get_all_values()
-    vip_queue = [row[2] for row in data[2:] if row[2] != ""]
-    normal_queue = [row[0] for row in data[2:] if row[0] != ""]
+    vip_queue = [row[2] for row in data[2:] if row[2] != "" and row[3] == "Ожидает"]
+    normal_queue = [row[0] for row in data[2:] if row[0] != "" and row[1] == "Ожидает"]
 
     if username in vip_queue:
         vip_position = vip_queue.index(username)
-        normal_position = len([user for user in normal_queue if data[normal_queue.index(user) + 2][1] == "Ожидает"])
-        return f"Перед тобой {vip_position} в VIP очереди и {normal_position} в обычной очереди. Ты {vip_position + normal_position + 1} в списке."
+        if vip_position == 0:
+            return f"Ты 1 в списке VIP очереди."
+        return f"Перед тобой {vip_position} в VIP очереди. Ты {vip_position + 1} в списке VIP очереди."
     elif username in normal_queue:
         normal_position = normal_queue.index(username)
-        vip_position = len([user for user in vip_queue if data[vip_queue.index(user) + 2][3] == "Ожидает"])
+        vip_position = len(vip_queue)
         return f"Перед тобой {vip_position} в VIP очереди и {normal_position} в обычной очереди. Ты {vip_position + normal_position + 1} в списке."
     else:
         return "Ты не в очереди."
+
 
 
 def mark_as_completed(worksheet, username):

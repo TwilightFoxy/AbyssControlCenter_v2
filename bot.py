@@ -1,11 +1,11 @@
+import asyncio
 import os
 from twitchio.ext import commands, pubsub
 from twitchio import Client
 from dotenv import load_dotenv
-from connect_to_sheets import add_to_queue, get_position
+from connect_to_sheets import connect_to_google_sheets, add_to_queue, get_position, get_queues
 
 load_dotenv(dotenv_path='config.env')
-
 
 class Bot(commands.Bot):
 
@@ -15,7 +15,11 @@ class Bot(commands.Bot):
         self.client_secret = client_secret
         self.channel = channel
         super().__init__(token=self.oauth_token, prefix='!', initial_channels=[f'#{self.channel}'])
+
+        self.worksheet = connect_to_google_sheets()  # Инициализация подключения к Google Sheets
+
         self.loop.create_task(self.connect_pubsub())
+        self.loop.create_task(self.periodic_queue_update())  # Запуск периодического обновления очереди
 
     async def event_ready(self):
         print(f'Logged in as | {self.nick}')
@@ -39,28 +43,27 @@ class Bot(commands.Bot):
     async def event_channel_points(self, event):
         print(f"Награда: {event.reward.title}, Пользователь: {event.user.name}")
 
-    @commands.command(name='привет')
-    async def hello_command(self, ctx):
-        await ctx.send(f'Привет, {ctx.author.name}!')
-
-    @commands.command(name='тг')
-    async def tg_command(self, ctx):
-        await ctx.send('Чтобы не пропустить анонсы, подписывайтесь на мой телеграм канал: https://t.me/unsella')
-
     # @commands.command(name='добавить')
     # async def add(self, ctx):
     #     username = ctx.author.name
-    #     add_to_queue(username, "normal")
+    #     add_to_queue(self.worksheet, username, "normal")
     #     await ctx.send(f"{username}, ты добавлен в обычную очередь.")
     #
     # @commands.command(name='добавитьвип')
     # async def add_vip(self, ctx):
     #     username = ctx.author.name
-    #     add_to_queue(username, "vip")
+    #     add_to_queue(self.worksheet, username, "vip")
     #     await ctx.send(f"{username}, ты добавлен в VIP очередь.")
-    #
-    # @commands.command(name='позиция')
-    # async def position(self, ctx):
-    #     username = ctx.author.name
-    #     position = get_position(username)
-    #     await ctx.send(f"{username}, {position}")
+
+    @commands.command(name='позиция')
+    async def position(self, ctx):
+        username = ctx.author.name
+        position = get_position(self.worksheet, username)
+        print(f"{username}, {position}")
+        await ctx.send(f"{username}, {position}")
+
+    async def periodic_queue_update(self):
+        while True:
+            print("Обновление очереди...")
+            self.worksheet = connect_to_google_sheets()
+            await asyncio.sleep(600)  # Ожидание 10 минут (600 секунд)
