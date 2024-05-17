@@ -4,6 +4,11 @@ from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QWidget, QLabel, QTabWidg
                              QApplication)
 from PyQt5.QtGui import QPixmap, QPalette, QBrush
 from twitch_bot_functions import save_config, load_config, load_commands, save_command, delete_command
+import os
+from bot import Bot
+import threading
+import asyncio
+
 
 class TwitchBotApp(QMainWindow):
     def __init__(self):
@@ -23,7 +28,7 @@ class TwitchBotApp(QMainWindow):
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
                 border: 1px solid #C4C4C3;
-                background: rgba(255, 255, 255, 150);
+                background: rgba(255, 255, 255, 127);
             }
             QTabBar::tab {
                 background: rgba(200, 200, 200, 180);
@@ -38,7 +43,7 @@ class TwitchBotApp(QMainWindow):
                 border: 2px solid #8A2BE2;
             }
             QWidget {
-                background: rgba(255, 255, 255, 25);
+                background: rgba(255, 255, 255, 0);
             }
         """)
         self.setCentralWidget(self.tabs)
@@ -53,7 +58,7 @@ class TwitchBotApp(QMainWindow):
         self.tabs.addTab(self.main_tab, "Главная")
         self.tabs.addTab(self.connect_tab, "Подключить аккаунт")
         self.tabs.addTab(self.commands_tab, "Команды")
-        self.tabs.addTab(self.queue_tab, "Настройки очереди")
+        self.tabs.addTab(self.queue_tab, "Очередь")
         self.tabs.addTab(self.additional_tab, "Дополнительно")
 
         self.init_main_tab()
@@ -65,8 +70,87 @@ class TwitchBotApp(QMainWindow):
     def init_main_tab(self):
         layout = QVBoxLayout()
         self.main_tab.setLayout(layout)
-        label = QLabel("Главная", self.main_tab)
-        layout.addWidget(label)
+
+        self.start_button = QPushButton("Start Bot")
+        self.start_button.setStyleSheet("background-color: green; color: white;")
+        self.start_button.clicked.connect(self.toggle_bot)
+        layout.addWidget(self.start_button)
+
+        status_layout = QHBoxLayout()
+
+        self.chatbot_status_label = QLabel("Chat Bot: OFF", self.main_tab)
+        status_layout.addWidget(self.chatbot_status_label)
+
+        self.login_info_label = QLabel("", self.main_tab)
+        status_layout.addWidget(self.login_info_label)
+
+        self.connection_status_label = QLabel("Connection: OFF", self.main_tab)
+        status_layout.addWidget(self.connection_status_label)
+
+        self.channel_info_label = QLabel("", self.main_tab)
+        status_layout.addWidget(self.channel_info_label)
+
+        layout.addLayout(status_layout)
+
+        document_layout = QHBoxLayout()
+
+        self.document_status_label = QLabel(f"Document: {os.getenv('SPREADSHEET_NAME')}", self.main_tab)
+        document_layout.addWidget(self.document_status_label)
+
+        self.sheet_status_label = QLabel(f"Sheet: {os.getenv('WORKSHEET_NAME')}", self.main_tab)
+        document_layout.addWidget(self.sheet_status_label)
+
+        layout.addLayout(document_layout)
+
+    def toggle_bot(self):
+        if self.start_button.text() == "Start Bot":
+            self.start_bot()
+        else:
+            self.stop_bot()
+
+    def start_bot(self):
+        try:
+            self.bot_thread = threading.Thread(target=self.run_bot)
+            self.bot_thread.start()
+            self.update_status("ON", "green")
+            self.start_button.setText("Stop Bot")
+            self.start_button.setStyleSheet("background-color: red; color: white;")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
+
+    def stop_bot(self):
+        if hasattr(self, 'bot'):
+            self.bot.loop.call_soon_threadsafe(self.bot.loop.stop)
+            self.bot_thread.join()
+        self.update_status("OFF", "red")
+        self.start_button.setText("Start Bot")
+        self.start_button.setStyleSheet("background-color: green; color: white;")
+        self.login_info_label.setText("")
+        self.channel_info_label.setText("")
+
+    def run_bot(self):
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        self.bot = Bot()
+        self.bot.main_window = self  # Добавим ссылку на главное окно в экземпляр бота
+        self.bot.run()
+
+    def update_status(self, status, color):
+        self.chatbot_status_label.setText(f"Chat Bot: {status}")
+        self.chatbot_status_label.setStyleSheet(f"color: {color}")
+
+        self.connection_status_label.setText(f"Connection: {status}")
+        self.connection_status_label.setStyleSheet(f"color: {color}")
+
+        self.document_status_label.setText(f"Document: {os.getenv('SPREADSHEET_NAME')}")
+        self.document_status_label.setStyleSheet(f"color: {color}")
+
+        self.sheet_status_label.setText(f"Sheet: {os.getenv('WORKSHEET_NAME')}")
+        self.sheet_status_label.setStyleSheet(f"color: {color}")
+
+    def update_login_info(self, login_info, channel_info):
+        self.login_info_label.setText(login_info)
+        self.channel_info_label.setText(channel_info)
 
     def init_connect_tab(self):
         layout = QVBoxLayout()
@@ -77,11 +161,15 @@ class TwitchBotApp(QMainWindow):
         self.twitch_client_id_input = QLineEdit()
         self.twitch_client_secret_input = QLineEdit()
         self.twitch_channel_input = QLineEdit()
+        self.spreadsheet_name_input = QLineEdit()
+        self.worksheet_name_input = QLineEdit()
 
         form_layout.addRow("TWITCH_OAUTH_TOKEN:", self.twitch_oauth_token_input)
         form_layout.addRow("TWITCH_CLIENT_ID:", self.twitch_client_id_input)
         form_layout.addRow("TWITCH_CLIENT_SECRET:", self.twitch_client_secret_input)
         form_layout.addRow("TWITCH_CHANNEL:", self.twitch_channel_input)
+        form_layout.addRow("SPREADSHEET_NAME:", self.spreadsheet_name_input)
+        form_layout.addRow("WORKSHEET_NAME:", self.worksheet_name_input)
 
         save_button = QPushButton("Сохранить")
         save_button.clicked.connect(self.save_config)
@@ -106,27 +194,39 @@ class TwitchBotApp(QMainWindow):
             '<a href="https://dev.twitch.tv/console/apps/create">dev.twitch.tv/console/apps/create</a>')
         devtwitch_link.setOpenExternalLinks(True)
 
+        important_label = QLabel(
+            '<a href="https://github.com/TwilightFoxy/coffee_bot">(ВАЖНО) Подключение гугл таблицы</a>')
+        important_label.setOpenExternalLinks(True)
+
+        activate_sheets_label = QLabel(
+            '<a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com">(ВАЖНО) Подключение Google Sheets API</a>')
+        activate_sheets_label.setOpenExternalLinks(True)
+
+        activate_drive_label = QLabel(
+            '<a href="https://console.cloud.google.com/apis/library/drive.googleapis.com">(ВАЖНО) Подключение Google Drive API</a>')
+        activate_drive_label.setOpenExternalLinks(True)
+
         links_layout.addWidget(oauth_token_label)
         links_layout.addWidget(twitchapps_link)
         links_layout.addWidget(client_id_secret_label)
         links_layout.addWidget(devtwitch_link)
-        links_layout.addStretch()  # Добавляем растяжение после ссылок для правильного позиционирования
+        links_layout.addWidget(important_label)
+        links_layout.addWidget(activate_sheets_label)
+        links_layout.addWidget(activate_drive_label)
+        links_layout.addStretch()
 
-        # Настройка ширины макета с ссылками
         links_widget = QWidget()
         links_widget.setLayout(links_layout)
-        links_widget.setFixedWidth(self.width() // 3)  # Устанавливаем ширину треть ширины окна
+        links_widget.setFixedWidth(self.width() // 4)
 
-        # Макет для изображения
         image_label = QLabel()
         pixmap = QPixmap("Resources/Phantom.png")
         image_label.setPixmap(pixmap)
-        image_label.setAlignment(Qt.AlignTop)  # Выравниваем по верхнему краю
+        image_label.setAlignment(Qt.AlignTop)
 
-        # Добавляем макеты в горизонтальный макет
         bottom_layout.addWidget(links_widget)
         bottom_layout.addWidget(image_label)
-        bottom_layout.addStretch()  # Добавляем растяжение после изображения для правильного позиционирования
+        bottom_layout.addStretch()
 
         layout.addLayout(bottom_layout)
         self.connect_tab.setLayout(layout)
@@ -138,19 +238,24 @@ class TwitchBotApp(QMainWindow):
             self.twitch_client_id_input.setText(config.get('TWITCH_CLIENT_ID', ''))
             self.twitch_client_secret_input.setText(config.get('TWITCH_CLIENT_SECRET', ''))
             self.twitch_channel_input.setText(config.get('TWITCH_CHANNEL', ''))
+            self.spreadsheet_name_input.setText(config.get('SPREADSHEET_NAME', ''))
+            self.worksheet_name_input.setText(config.get('WORKSHEET_NAME', ''))
 
     def save_config(self):
         oauth_token = self.twitch_oauth_token_input.text()
         client_id = self.twitch_client_id_input.text()
         client_secret = self.twitch_client_secret_input.text()
         channel = self.twitch_channel_input.text()
+        spreadsheet_name = self.spreadsheet_name_input.text()
+        worksheet_name = self.worksheet_name_input.text()
 
-        if not oauth_token or not client_id or not client_secret or not channel:
+        if not oauth_token or not client_id or not client_secret or not channel or not spreadsheet_name or not worksheet_name:
             QMessageBox.warning(self, "Ошибка", "Все поля обязательны для заполнения")
             return
 
-        save_config(oauth_token, client_id, client_secret, channel)
-        QMessageBox.information(self, "Успех", "Данные успешно сохранены")
+        save_config(oauth_token, client_id, client_secret, channel, spreadsheet_name, worksheet_name)
+        self.show_toast("Данные успешно сохранены")
+        # QMessageBox.information(self, "Успех", "Данные успешно сохранены")
 
     def init_commands_tab(self):
         layout = QVBoxLayout()
@@ -252,11 +357,8 @@ class TwitchBotApp(QMainWindow):
     def init_queue_tab(self):
         layout = QVBoxLayout()
         self.queue_tab.setLayout(layout)
-        label = QLabel("Настройки очереди", self.queue_tab)
+        label = QLabel("Очередь", self.queue_tab)
         layout.addWidget(label)
-
-    from PyQt5.QtCore import QTimer, Qt
-    from PyQt5.QtWidgets import QLabel
 
     def init_additional_tab(self):
         layout = QVBoxLayout()
@@ -281,9 +383,9 @@ class TwitchBotApp(QMainWindow):
         toast.setStyleSheet("background-color: #444444; color: white; padding: 10px; border-radius: 5px;")
         toast.setAlignment(Qt.AlignCenter)
         toast.setWindowFlags(Qt.ToolTip)
-        toast.setAttribute(Qt.WA_DeleteOnClose)  # Удаляем виджет после закрытия
+        toast.setAttribute(Qt.WA_DeleteOnClose)
         toast.setGeometry(0, 0, 250, 50)
         toast.move(self.width() // 2 - toast.width() // 2, self.height() // 2 - toast.height() // 2)
         toast.show()
 
-        QTimer.singleShot(2000, toast.close)  # Скрываем сообщение через 2 секунды
+        QTimer.singleShot(2000, toast.close)

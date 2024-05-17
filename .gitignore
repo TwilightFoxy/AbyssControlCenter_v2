@@ -2,7 +2,7 @@
 config.env
 commands.json
 
-main.spec
+access.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
