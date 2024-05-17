@@ -6,11 +6,12 @@ import asyncio
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QWidget, QLabel, QTabWidget, QLineEdit,
                              QPushButton, QFormLayout, QMessageBox, QScrollArea, QHBoxLayout, QFrame, QListWidget,
-                             QApplication)
+                             QApplication, QCheckBox, QComboBox)
 from PyQt5.QtGui import QPixmap, QPalette, QBrush
 
 from twitch_bot_functions import save_config, load_config, load_commands, save_command, delete_command
 from bot import Bot
+from connect_to_sheets import connect_to_google_sheets, add_to_queue, mark_as_completed, get_queues, get_first_waiting_user
 
 
 class TwitchBotApp(QMainWindow):
@@ -46,7 +47,7 @@ class TwitchBotApp(QMainWindow):
                 border: 2px solid #8A2BE2;
             }
             QWidget {
-                background: rgba(255, 255, 255, 0);
+                background: rgba(255, 255, 255, 20);
             }
         """)
         self.setCentralWidget(self.tabs)
@@ -165,8 +166,14 @@ class TwitchBotApp(QMainWindow):
 
         form_layout = QFormLayout()
         self.twitch_oauth_token_input = QLineEdit()
+        self.twitch_oauth_token_input.setEchoMode(QLineEdit.Password)
+
         self.twitch_client_id_input = QLineEdit()
+        self.twitch_client_id_input.setEchoMode(QLineEdit.Password)
+
         self.twitch_client_secret_input = QLineEdit()
+        self.twitch_client_secret_input.setEchoMode(QLineEdit.Password)
+
         self.twitch_channel_input = QLineEdit()
         self.spreadsheet_name_input = QLineEdit()
         self.worksheet_name_input = QLineEdit()
@@ -175,8 +182,8 @@ class TwitchBotApp(QMainWindow):
         form_layout.addRow("TWITCH_CLIENT_ID:", self.twitch_client_id_input)
         form_layout.addRow("TWITCH_CLIENT_SECRET:", self.twitch_client_secret_input)
         form_layout.addRow("TWITCH_CHANNEL:", self.twitch_channel_input)
-        form_layout.addRow("SPREADSHEET_NAME:", self.spreadsheet_name_input)
-        form_layout.addRow("WORKSHEET_NAME:", self.worksheet_name_input)
+        form_layout.addRow("Таблица:", self.spreadsheet_name_input)
+        form_layout.addRow("Лист:", self.worksheet_name_input)
 
         save_button = QPushButton("Сохранить")
         save_button.clicked.connect(self.save_config)
@@ -389,10 +396,187 @@ class TwitchBotApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка", message)
 
     def init_queue_tab(self):
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()
         self.queue_tab.setLayout(layout)
+
+        # Подключение к Google Sheets
+        self.worksheet = connect_to_google_sheets()
+
+        # Управление очередью
+        control_layout = QVBoxLayout()
+        control_layout.setAlignment(Qt.AlignTop)
+
+        # Заголовок
         label = QLabel("Очередь", self.queue_tab)
-        layout.addWidget(label)
+        control_layout.addWidget(label, alignment=Qt.AlignTop)
+
+        # Автоматическое удаление или пометка
+        auto_process_layout = QHBoxLayout()
+        self.first_user_label = QLabel("[Имя первого пользователя] - [Статус]")
+        self.mark_button = QPushButton("Пометить")
+        self.mark_button.clicked.connect(lambda: self.mark_first_user_as_completed())
+        auto_process_layout.addWidget(self.first_user_label)
+        auto_process_layout.addWidget(self.mark_button)
+        control_layout.addLayout(auto_process_layout)
+
+        # Добавить пользователя
+        add_user_group = QVBoxLayout()
+        self.add_user_label = QLabel("Добавить пользователя")
+        add_user_form_layout = QHBoxLayout()
+        self.add_user_name_input = QLineEdit()
+        self.add_user_type_selector = QComboBox()
+        self.add_user_type_selector.addItems(["VIP", "Обычная"])
+        self.add_user_button = QPushButton("Добавить")
+        self.add_user_button.clicked.connect(lambda: self.add_user())
+        add_user_form_layout.addWidget(self.add_user_name_input)
+        add_user_form_layout.addWidget(self.add_user_type_selector)
+        add_user_form_layout.addWidget(self.add_user_button)
+        add_user_group.addWidget(self.add_user_label)
+        add_user_group.addLayout(add_user_form_layout)
+        control_layout.addLayout(add_user_group)
+
+        # Удалить пользователя
+        remove_user_group = QVBoxLayout()
+        self.remove_user_label = QLabel("Отметить пользователя")
+        remove_user_form_layout = QHBoxLayout()
+        self.remove_user_name_input = QLineEdit()
+        self.remove_user_type_selector = QComboBox()
+        self.remove_user_type_selector.addItems(["VIP", "Обычная"])
+        self.remove_user_button = QPushButton("Отметить")
+        self.remove_user_button.clicked.connect(lambda: self.remove_user())
+        remove_user_form_layout.addWidget(self.remove_user_name_input)
+        remove_user_form_layout.addWidget(self.remove_user_type_selector)
+        remove_user_form_layout.addWidget(self.remove_user_button)
+        remove_user_group.addWidget(self.remove_user_label)
+        remove_user_group.addLayout(remove_user_form_layout)
+        control_layout.addLayout(remove_user_group)
+
+        # Скрыть пройденные
+        self.hide_completed_checkbox = QCheckBox("Скрыть пройденные")
+        self.hide_completed_checkbox.stateChanged.connect(lambda: self.update_queues())
+        control_layout.addWidget(self.hide_completed_checkbox)
+
+        # Автоматическое добавление пользователей за баллы
+        auto_add_group = QVBoxLayout()
+        self.auto_add_label = QLabel("Автоматическое добавление пользователей за баллы")
+        auto_add_form_layout = QHBoxLayout()
+        self.auto_add_command_input = QLineEdit()
+        self.auto_add_save_button = QPushButton("Сохранить")
+        self.auto_add_save_button.clicked.connect(lambda: self.save_auto_add_command())
+        auto_add_form_layout.addWidget(self.auto_add_command_input)
+        auto_add_form_layout.addWidget(self.auto_add_save_button)
+        auto_add_group.addWidget(self.auto_add_label)
+        auto_add_group.addLayout(auto_add_form_layout)
+        control_layout.addLayout(auto_add_group)
+
+        # Дополнительные функции
+        additional_functions_layout = QHBoxLayout()
+        self.refresh_button = QPushButton("Обновить очередь")
+        self.refresh_button.clicked.connect(lambda: self.update_queues())
+        self.export_button = QPushButton("Экспортировать в CSV")
+        self.export_button.clicked.connect(lambda: self.export_to_csv())
+        additional_functions_layout.addWidget(self.refresh_button)
+        additional_functions_layout.addWidget(self.export_button)
+        control_layout.addLayout(additional_functions_layout)
+
+        # Разместим управление очередью слева
+        control_widget = QWidget()
+        control_widget.setLayout(control_layout)
+        control_widget.setFixedWidth(self.width() // 3)  # Занимает треть экрана
+        layout.addWidget(control_widget)
+
+        # Обычная очередь
+        normal_queue_layout = QVBoxLayout()
+        normal_queue_layout.setAlignment(Qt.AlignTop)
+        self.normal_queue_label = QLabel("Обычная очередь")
+        self.normal_queue_list = QListWidget()
+        normal_queue_layout.addWidget(self.normal_queue_label, alignment=Qt.AlignTop)
+        normal_queue_layout.addWidget(self.normal_queue_list)
+
+        normal_queue_scroll_area = QScrollArea()
+        normal_queue_scroll_area.setWidgetResizable(True)
+        normal_queue_scroll_area.setWidget(QWidget())
+        normal_queue_scroll_area.widget().setLayout(normal_queue_layout)
+        layout.addWidget(normal_queue_scroll_area)
+
+        # VIP очередь
+        vip_queue_layout = QVBoxLayout()
+        vip_queue_layout.setAlignment(Qt.AlignTop)
+        self.vip_queue_label = QLabel("VIP очередь")
+        self.vip_queue_list = QListWidget()
+        vip_queue_layout.addWidget(self.vip_queue_label, alignment=Qt.AlignTop)
+        vip_queue_layout.addWidget(self.vip_queue_list)
+
+        vip_queue_scroll_area = QScrollArea()
+        vip_queue_scroll_area.setWidgetResizable(True)
+        vip_queue_scroll_area.setWidget(QWidget())
+        vip_queue_scroll_area.widget().setLayout(vip_queue_layout)
+        layout.addWidget(vip_queue_scroll_area)
+
+        self.update_queues()
+
+    def mark_first_user_as_completed(self):
+        first_user = get_first_waiting_user(self.worksheet)
+        if first_user:
+            mark_as_completed(self.worksheet, first_user)
+            self.update_queues()
+
+    def add_user(self):
+        username = self.add_user_name_input.text().strip()
+        queue_type = self.add_user_type_selector.currentText().lower()
+        if username:
+            add_to_queue(self.worksheet, username, queue_type)
+            self.update_queues()
+
+    def remove_user(self):
+        username = self.remove_user_name_input.text().strip()
+        queue_type = self.remove_user_type_selector.currentText().lower()
+        if username:
+            mark_as_completed(self.worksheet, username)  # Здесь нужно изменить на функцию удаления
+            self.update_queues()
+
+    def save_auto_add_command(self):
+        command = self.auto_add_command_input.text().strip()
+        # Логика сохранения команды для автоматического добавления пользователей
+        print(f"Сохранена команда: {command}")
+
+    def update_queues(self):
+        # Загрузка данных из config.env
+        os.environ['SPREADSHEET_NAME'] = self.spreadsheet_name_input.text()
+        os.environ['WORKSHEET_NAME'] = self.worksheet_name_input.text()
+
+        # Подключение к Google Sheets с новыми данными
+        self.worksheet = connect_to_google_sheets()
+
+        # Обновление очередей
+        vip_queue, normal_queue = get_queues(self.worksheet)
+
+        self.normal_queue_list.clear()
+        self.vip_queue_list.clear()
+
+        hide_completed = self.hide_completed_checkbox.isChecked()
+
+        for user, status in normal_queue:
+            if hide_completed and status == "Пройдена":
+                continue
+            item = f"{user} - {status}"
+            self.normal_queue_list.addItem(item)
+
+        for user, status in vip_queue:
+            if hide_completed and status == "Пройдена":
+                continue
+            item = f"{user} - {status}"
+            self.vip_queue_list.addItem(item)
+
+        first_user = get_first_waiting_user(self.worksheet)
+        if first_user:
+            self.first_user_label.setText(f"{first_user} - Ожидает")
+        else:
+            self.first_user_label.setText("[Нет ожидающих пользователей]")
+
+    def export_to_csv(self):
+        # Логика экспорта очереди в CSV
+        print("Экспорт в CSV")
 
     def init_additional_tab(self):
         layout = QVBoxLayout()
