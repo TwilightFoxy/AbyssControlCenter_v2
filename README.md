@@ -70,14 +70,8 @@
 
 2. **Получение OAuth токена:**
     - После создания приложения вы увидите `Client ID` и `Client Secret`.
-    - Перейдите по следующему URL для получения OAuth токена:
-      ```text
-      https://id.twitch.tv/oauth2/authorize
-      ?client_id=ВАШ_CLIENT_ID
-      &redirect_uri=http://localhost
-      &response_type=token
-      &scope=chat:read+chat:edit+channel:read:redemptions+channel:manage:redemptions
-      ```
+    - Занесите эти значения в приложение
+    - Перейдите по ссылке "Получить ключ активации" прямо в приложении
     - Авторизуйтесь и получите OAuth токен.
 
 3. **Заполнение конфигурации в приложении:**
