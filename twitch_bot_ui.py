@@ -1,13 +1,16 @@
+import webbrowser
+import os
+import threading
+import asyncio
+
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QWidget, QLabel, QTabWidget, QLineEdit,
                              QPushButton, QFormLayout, QMessageBox, QScrollArea, QHBoxLayout, QFrame, QListWidget,
                              QApplication)
 from PyQt5.QtGui import QPixmap, QPalette, QBrush
+
 from twitch_bot_functions import save_config, load_config, load_commands, save_command, delete_command
-import os
 from bot import Bot
-import threading
-import asyncio
 
 
 class TwitchBotApp(QMainWindow):
@@ -110,6 +113,8 @@ class TwitchBotApp(QMainWindow):
 
     def start_bot(self):
         try:
+            self.load_config()  # Load the configuration before starting the bot
+            self.stop_bot()  # Ensure the previous bot instance is stopped
             self.bot_thread = threading.Thread(target=self.run_bot)
             self.bot_thread.start()
             self.update_status("ON", "green")
@@ -122,6 +127,7 @@ class TwitchBotApp(QMainWindow):
         if hasattr(self, 'bot'):
             self.bot.loop.call_soon_threadsafe(self.bot.loop.stop)
             self.bot_thread.join()
+            del self.bot  # Delete the old bot instance
         self.update_status("OFF", "red")
         self.start_button.setText("Start Bot")
         self.start_button.setStyleSheet("background-color: green; color: white;")
@@ -129,9 +135,10 @@ class TwitchBotApp(QMainWindow):
         self.channel_info_label.setText("")
 
     def run_bot(self):
+        config = load_config()
         new_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(new_loop)
-        self.bot = Bot()
+        self.bot = Bot(config['TWITCH_OAUTH_TOKEN'], config['TWITCH_CLIENT_ID'], config['TWITCH_CLIENT_SECRET'], config['TWITCH_CHANNEL'])
         self.bot.main_window = self  # Добавим ссылку на главное окно в экземпляр бота
         self.bot.run()
 
@@ -186,7 +193,14 @@ class TwitchBotApp(QMainWindow):
         # Макет для ссылок
         links_layout = QVBoxLayout()
         oauth_token_label = QLabel("TWITCH_OAUTH_TOKEN:")
-        twitchapps_link = QLabel('<a href="https://twitchapps.com">twitchapps.com</a>')
+        auth_url = (
+            f"https://id.twitch.tv/oauth2/authorize"
+            f"?client_id={self.twitch_client_id_input.text().strip()}"
+            f"&redirect_uri=http://localhost"
+            f"&response_type=token"
+            f"&scope=chat:read+chat:edit+channel:read:redemptions+channel:manage:redemptions"
+        )
+        twitchapps_link = QLabel(f'<a href="{auth_url}">Получить ключ авторизации</a>')
         twitchapps_link.setOpenExternalLinks(True)
 
         client_id_secret_label = QLabel("TWITCH_CLIENT_ID/SECRET:")
@@ -231,6 +245,27 @@ class TwitchBotApp(QMainWindow):
         layout.addLayout(bottom_layout)
         self.connect_tab.setLayout(layout)
 
+    def get_auth_token(self):
+        client_id = self.twitch_client_id_input.text().strip()
+        client_secret = self.twitch_client_secret_input.text().strip()
+
+        if not client_id or not client_secret:
+            QMessageBox.warning(self, "Ошибка", "Заполните поля CLIENT ID и CLIENT SECRET")
+            return
+
+        redirect_uri = "http://localhost"
+        scope = "chat:read chat:edit channel:read:redemptions channel:manage:redemptions"
+
+        auth_url = (
+            f"https://id.twitch.tv/oauth2/authorize"
+            f"?client_id={client_id}"
+            f"&redirect_uri={redirect_uri}"
+            f"&response_type=token"
+            f"&scope={scope.replace(' ', '+')}"
+        )
+
+        webbrowser.open(auth_url)
+
     def load_config(self):
         config = load_config()
         if config:
@@ -255,7 +290,6 @@ class TwitchBotApp(QMainWindow):
 
         save_config(oauth_token, client_id, client_secret, channel, spreadsheet_name, worksheet_name)
         self.show_toast("Данные успешно сохранены")
-        # QMessageBox.information(self, "Успех", "Данные успешно сохранены")
 
     def init_commands_tab(self):
         layout = QVBoxLayout()
