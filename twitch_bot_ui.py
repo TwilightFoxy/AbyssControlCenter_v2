@@ -6,7 +6,7 @@ import asyncio
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QWidget, QLabel, QTabWidget, QLineEdit,
                              QPushButton, QFormLayout, QMessageBox, QScrollArea, QHBoxLayout, QFrame, QListWidget,
-                             QApplication, QCheckBox, QComboBox)
+                             QApplication, QCheckBox, QComboBox, QProgressDialog)
 from PyQt5.QtGui import QPixmap, QPalette, QBrush
 
 from twitch_bot_functions import save_config, load_config, load_commands, save_command, delete_command
@@ -17,6 +17,8 @@ from connect_to_sheets import connect_to_google_sheets, add_to_queue, mark_as_co
 class TwitchBotApp(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        self.progress_dialog = None
 
         self.setWindowTitle("Twitch Bot Manager")
         self.setGeometry(100, 100, 1024, 768)
@@ -71,9 +73,22 @@ class TwitchBotApp(QMainWindow):
         self.init_queue_tab()
         self.init_additional_tab()
 
+
         # self.queue_update_timer = QTimer(self)
         # self.queue_update_timer.timeout.connect(self.update_queues)
         # self.queue_update_timer.start(60000)
+
+    def show_loading(self, message="Загрузка..."):
+        if self.progress_dialog is None:
+            self.progress_dialog = QProgressDialog(message, "Отмена", 0, 0, self)
+            self.progress_dialog.setWindowModality(Qt.WindowModal)
+        else:
+            self.progress_dialog.setLabelText(message)
+        self.progress_dialog.show()
+
+    def hide_loading(self):
+        if self.progress_dialog:
+            self.progress_dialog.hide()
 
     def init_main_tab(self):
         layout = QVBoxLayout()
@@ -161,8 +176,9 @@ class TwitchBotApp(QMainWindow):
 
     def start_bot(self):
         try:
-            self.load_config()  # Load the configuration before starting the bot
-            self.stop_bot()  # Ensure the previous bot instance is stopped
+            self.load_config()
+            self.stop_bot()
+            self.show_loading("Запуск бота...")
             self.bot_thread = threading.Thread(target=self.run_bot)
             self.bot_thread.start()
             self.update_status("ON", "green")
@@ -170,17 +186,25 @@ class TwitchBotApp(QMainWindow):
             self.start_button.setStyleSheet("background-color: red; color: white;")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
+        finally:
+            self.hide_loading()
 
     def stop_bot(self):
-        if hasattr(self, 'bot'):
-            self.bot.loop.call_soon_threadsafe(self.bot.loop.stop)
-            self.bot_thread.join()
-            del self.bot  # Delete the old bot instance
-        self.update_status("OFF", "red")
-        self.start_button.setText("Start Bot")
-        self.start_button.setStyleSheet("background-color: green; color: white;")
-        self.login_info_label.setText("")
-        self.channel_info_label.setText("")
+        self.show_loading("Остановка бота...")
+        try:
+            if hasattr(self, 'bot'):
+                self.bot.loop.call_soon_threadsafe(self.bot.loop.stop)
+                self.bot_thread.join()
+                del self.bot
+            self.update_status("OFF", "red")
+            self.start_button.setText("Start Bot")
+            self.start_button.setStyleSheet("background-color: green; color: white;")
+            self.login_info_label.setText("")
+            self.channel_info_label.setText("")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
+        finally:
+            self.hide_loading()
 
     def run_bot(self):
         config = load_config()
@@ -514,6 +538,16 @@ class TwitchBotApp(QMainWindow):
         additional_functions_layout.addWidget(self.export_button)
         control_layout.addLayout(additional_functions_layout)
 
+        self.auto_add_label1 = QLabel("Если нужно именно удалить ячейку, то")
+        self.auto_add_label2 = QLabel("сделайте это в онлайн таблице, ")
+        self.auto_add_label3 = QLabel("удалив ячейку и её состояние ")
+        self.auto_add_label4 = QLabel("со сдвигом вверх")
+        auto_add_group.addWidget(self.auto_add_label1)
+        auto_add_group.addWidget(self.auto_add_label2)
+        auto_add_group.addWidget(self.auto_add_label3)
+        auto_add_group.addWidget(self.auto_add_label4)
+        control_layout.addLayout(additional_functions_layout)
+
         # Разместим управление очередью слева
         control_widget = QWidget()
         control_widget.setLayout(control_layout)
@@ -525,6 +559,7 @@ class TwitchBotApp(QMainWindow):
         normal_queue_layout.setAlignment(Qt.AlignTop)
         self.normal_queue_label = QLabel("Обычная очередь")
         self.normal_queue_list = QListWidget()
+        self.normal_queue_list.itemClicked.connect(self.copy_item_to_clipboard)
         normal_queue_layout.addWidget(self.normal_queue_label, alignment=Qt.AlignTop)
         normal_queue_layout.addWidget(self.normal_queue_list)
 
@@ -534,11 +569,11 @@ class TwitchBotApp(QMainWindow):
         normal_queue_scroll_area.widget().setLayout(normal_queue_layout)
         layout.addWidget(normal_queue_scroll_area)
 
-        # VIP очередь
         vip_queue_layout = QVBoxLayout()
         vip_queue_layout.setAlignment(Qt.AlignTop)
         self.vip_queue_label = QLabel("VIP очередь")
         self.vip_queue_list = QListWidget()
+        self.vip_queue_list.itemClicked.connect(self.copy_item_to_clipboard)
         vip_queue_layout.addWidget(self.vip_queue_label, alignment=Qt.AlignTop)
         vip_queue_layout.addWidget(self.vip_queue_list)
 
@@ -550,25 +585,47 @@ class TwitchBotApp(QMainWindow):
 
         self.update_queues()
 
+    def copy_item_to_clipboard(self, item):
+        clipboard = QApplication.clipboard()
+        text_to_copy = item.text().split(" - ")[0]
+        clipboard.setText(text_to_copy)
+        self.show_toast(f"Скопировано в буфер: {text_to_copy}")
+
     def mark_first_user_as_completed(self):
-        first_user = get_first_waiting_user(self.worksheet)
-        if first_user:
-            mark_as_completed(self.worksheet, first_user)
-            self.update_queues()
+        self.show_loading("Отметка первого пользователя как выполненного...")
+        try:
+            first_user, queue_type = get_first_waiting_user(self.worksheet)
+            if first_user:
+                mark_as_completed(self.worksheet, first_user, queue_type)
+                self.update_queues()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
+        finally:
+            self.hide_loading()
 
     def add_user(self):
-        username = self.add_user_name_input.text().strip()
-        queue_type = self.add_user_type_selector.currentText().lower()
-        if username:
-            add_to_queue(self.worksheet, username, queue_type)
-            self.update_queues()
+        self.show_loading("Добавление пользователя...")
+        try:
+            username = self.add_user_name_input.text().strip()
+            queue_type = self.add_user_type_selector.currentText().lower()
+            if username:
+                add_to_queue(self.worksheet, username, queue_type)
+                self.update_queues()
+        finally:
+            self.hide_loading()
 
     def remove_user(self):
-        username = self.remove_user_name_input.text().strip()
-        queue_type = self.remove_user_type_selector.currentText().lower()
-        if username:
-            mark_as_completed(self.worksheet, username)  # Здесь нужно изменить на функцию удаления
-            self.update_queues()
+        self.show_loading("Отметка пользователя как выполненного...")
+        try:
+            username = self.remove_user_name_input.text().strip()
+            queue_type = self.remove_user_type_selector.currentText().lower()
+            if username:
+                mark_as_completed(self.worksheet, username, queue_type)
+                self.update_queues()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
+        finally:
+            self.hide_loading()
 
     def save_auto_add_command(self):
         command = self.auto_add_command_input.text().strip()
@@ -577,32 +634,34 @@ class TwitchBotApp(QMainWindow):
         print(f"Сохранена команда: {command}")
 
     def update_queues(self):
-        self.worksheet = connect_to_google_sheets()
+        self.show_loading("Обновление очереди...")
+        try:
+            self.worksheet = connect_to_google_sheets()
+            vip_queue, normal_queue = get_queues(self.worksheet)
+            self.normal_queue_list.clear()
+            self.vip_queue_list.clear()
 
-        vip_queue, normal_queue = get_queues(self.worksheet)
+            hide_completed = self.hide_completed_checkbox.isChecked()
 
-        self.normal_queue_list.clear()
-        self.vip_queue_list.clear()
+            for user, status in normal_queue:
+                if hide_completed and status == "Пройдена":
+                    continue
+                item = f"{user} - {status}"
+                self.normal_queue_list.addItem(item)
 
-        hide_completed = self.hide_completed_checkbox.isChecked()
+            for user, status in vip_queue:
+                if hide_completed and status == "Пройдена":
+                    continue
+                item = f"{user} - {status}"
+                self.vip_queue_list.addItem(item)
 
-        for user, status in normal_queue:
-            if hide_completed and status == "Пройдена":
-                continue
-            item = f"{user} - {status}"
-            self.normal_queue_list.addItem(item)
-
-        for user, status in vip_queue:
-            if hide_completed and status == "Пройдена":
-                continue
-            item = f"{user} - {status}"
-            self.vip_queue_list.addItem(item)
-
-        first_user = get_first_waiting_user(self.worksheet)
-        if first_user:
-            self.first_user_label.setText(f"{first_user} - Ожидает")
-        else:
-            self.first_user_label.setText("[Нет ожидающих пользователей]")
+            first_user = get_first_waiting_user(self.worksheet)
+            if first_user:
+                self.first_user_label.setText(f"{first_user} - Ожидает")
+            else:
+                self.first_user_label.setText("[Нет ожидающих пользователей]")
+        finally:
+            self.hide_loading()
 
     def export_to_csv(self):
         self.show_toast("В разработке. Ну точнее мне пока лень, но если кому-то понадобится сделаю")

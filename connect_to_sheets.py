@@ -75,16 +75,20 @@ def get_position(worksheet, username):
 
 
 
-def mark_as_completed(worksheet, username):
-    cell = worksheet.find(username)
-    if cell:
-        if cell.col == 1:
-            worksheet.update_cell(cell.row, 2, "Пройдена")
-            format_cell_range(worksheet, f'A{cell.row}:B{cell.row}', cellFormat(backgroundColor=completed_color))
-        elif cell.col == 3:
-            worksheet.update_cell(cell.row, 4, "Пройдена")
-            format_cell_range(worksheet, f'C{cell.row}:D{cell.row}', cellFormat(backgroundColor=completed_color))
-
+def mark_as_completed(worksheet, username, queue_type):
+    data = worksheet.get_all_values()
+    if queue_type == "vip":
+        for row_idx, row in enumerate(data[2:], start=3):  # начинаем с 3, чтобы пропустить заголовок
+            if row[2] == username and row[3] == "Ожидает":
+                worksheet.update_cell(row_idx, 4, "Пройдена")
+                format_cell_range(worksheet, f'C{row_idx}:D{row_idx}', cellFormat(backgroundColor=completed_color))
+                return  # выход из функции после первой найденной записи
+    else:
+        for row_idx, row in enumerate(data[2:], start=3):
+            if row[0] == username and row[1] == "Ожидает":
+                worksheet.update_cell(row_idx, 2, "Пройдена")
+                format_cell_range(worksheet, f'A{row_idx}:B{row_idx}', cellFormat(backgroundColor=completed_color))
+                return  # выход из функции после первой найденной записи
 
 def get_first_waiting_user(worksheet):
     data = worksheet.get_all_values()
@@ -94,13 +98,14 @@ def get_first_waiting_user(worksheet):
     # Найти первого пользователя в VIP очереди со статусом "Ожидает"
     for user, status in vip_queue:
         if status == "Ожидает":
-            return user
+            return user, "vip"
 
     # Если в VIP очереди нет ожидающих, найти первого пользователя в обычной очереди со статусом "Ожидает"
     for user, status in normal_queue:
         if status == "Ожидает":
-            return user
-    return None
+            return user, "normal"
+
+    return None, None
 
 
 def get_queues(worksheet):
