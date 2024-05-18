@@ -1,11 +1,10 @@
 import asyncio
 import os
 import threading
-
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QVBoxLayout, QPushButton, QFrame, QLabel, QMessageBox
 from twitch_bot_functions import load_config
-from bot import Bot
+from bot import Bot, run_bot
 
 def init_main_tab(self):
     layout = QVBoxLayout()
