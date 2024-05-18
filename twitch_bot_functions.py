@@ -96,3 +96,8 @@ def delete_command(command):
         return True, "Команда успешно удалена."
     except Exception as e:
         return False, str(e)
+
+
+
+def update_commands():
+    return load_commands()
