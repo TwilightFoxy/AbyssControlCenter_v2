@@ -1,0 +1,56 @@
+QWidget {
+    background-color: #2e2e2e;
+    color: #f0f0f0;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+QPushButton {
+    background-color: #3a3a3a;
+    border: 1px solid #555555;
+    border-radius: 5px;
+    padding: 5px 10px;
+    color: #f0f0f0;
+}
+
+QPushButton:hover {
+    background-color: #4a4a4a;
+}
+
+QPushButton:pressed {
+    background-color: #2a2a2a;
+}
+
+QPushButton#deleteButton, QPushButton#deleteAllButton {
+    background-color: #d9534f;
+}
+
+QPushButton#deleteButton:hover, QPushButton#deleteAllButton:hover {
+    background-color: #c9302c;
+}
+
+QPushButton#deleteButton:pressed, QPushButton#deleteAllButton:pressed {
+    background-color: #ac2925;
+}
+
+QLineEdit, QComboBox {
+    background-color: #3a3a3a;
+    border: 1px solid #555555;
+    border-radius: 5px;
+    padding: 5px;
+    color: #f0f0f0;
+}
+
+QTableWidget {
+    background-color: #1e1e1e;
+    gridline-color: #555555;
+    color: #f0f0f0;
+}
+
+QHeaderView::section {
+    background-color: #3a3a3a;
+    color: #f0f0f0;
+    padding: 2px; /* Уменьшение высоты заголовков колонок */
+    border: 1px solid #555555;
+    font-size: 12px; /* Уменьшение размера шрифта для заголовков */
+}

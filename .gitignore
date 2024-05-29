@@ -1,0 +1,21 @@
+# Python
+*.pyc
+__pycache__/
+
+# Environment
+.venv/
+.tests/
+
+# IDE
+.idea/
+
+# Ignore the output file
+output.txt
+
+# Ignore data files
+data.json
+queue_data.json
+settings.json
+
+# Ignore settings file
+template.txt
