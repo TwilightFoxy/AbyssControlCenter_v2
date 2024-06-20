@@ -6,23 +6,26 @@ from .commands_view import CommandsView
 from .queue_view import QueueView
 from .settings_view import SettingsView
 
+SETTINGS_PATH = "data/settings.json"
+
 class MainView(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Genshin Streamer Bot")
+        self.setWindowTitle("AbyssControlCenter_v0.3")
 
         self.tab_widget = QTabWidget()
         self.setCentralWidget(self.tab_widget)
 
+        self.queue_view = QueueView()
         self.add_tabs()
         self.adjustSize()
 
         self.load_settings()
 
+    # Добавление вкладок в интерфейс
     def add_tabs(self):
         self.main_tab = self.create_main_tab()
-        self.commands_view = CommandsView()
-        self.queue_view = QueueView()
+        self.commands_view = CommandsView(self.queue_view)
         self.settings_view = SettingsView()
 
         self.tabs = [
@@ -35,6 +38,7 @@ class MainView(QMainWindow):
         for tab_name, tab_widget in self.tabs:
             self.tab_widget.addTab(tab_widget, tab_name)
 
+    # Создание главной вкладки
     def create_main_tab(self):
         main_tab = QWidget()
         layout = QVBoxLayout()
@@ -43,14 +47,16 @@ class MainView(QMainWindow):
         main_tab.setLayout(layout)
         return main_tab
 
+    # Загрузка настроек из файла
     def load_settings(self):
-        if os.path.exists("settings.json"):
-            with open("settings.json", "r") as file:
+        if os.path.exists(SETTINGS_PATH):
+            with open(SETTINGS_PATH, "r") as file:
                 settings = json.load(file)
                 startup_tab = settings.get("startup_tab", "Главная")
                 self.set_startup_tab(startup_tab)
                 self.hide_tabs(settings)
 
+    # Установка начальной вкладки
     def set_startup_tab(self, tab_name):
         tab_index = {
             "Главная": 0,
@@ -60,6 +66,7 @@ class MainView(QMainWindow):
         }.get(tab_name, 0)
         self.tab_widget.setCurrentIndex(tab_index)
 
+    # Скрытие вкладок в соответствии с настройками
     def hide_tabs(self, settings):
         hide_main = settings.get("hide_main", False)
         hide_commands = settings.get("hide_commands", False)

@@ -4,7 +4,6 @@ __pycache__/
 
 # Environment
 .venv/
-.tests/
 
 # IDE
 .idea/
@@ -13,11 +12,4 @@ __pycache__/
 output.txt
 
 # Ignore data files
-data.json
-queue_data.json
-settings.json
-
-# Ignore settings file
-template.txt
-
-test.py
+./data
