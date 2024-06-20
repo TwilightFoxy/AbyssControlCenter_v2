@@ -12,4 +12,4 @@ __pycache__/
 output.txt
 
 # Ignore data files
-./data
+.data/
