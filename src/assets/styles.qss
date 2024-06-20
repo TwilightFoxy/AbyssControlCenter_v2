@@ -54,3 +54,25 @@ QHeaderView::section {
     border: 1px solid #555555;
     font-size: 12px; /* Уменьшение размера шрифта для заголовков */
 }
+
+QTabBar::tab {
+    background-color: #3a3a3a;  /* Цвет фона вкладок */
+    color: #f0f0f0;             /* Цвет текста на вкладках */
+    padding: 5px;
+    border: 1px solid #555555;
+}
+
+QTabBar::tab:selected {
+    background-color: #4a4a4a;  /* Цвет фона выбранной вкладки */
+    color: #f0f0f0;             /* Цвет текста на выбранной вкладке */
+}
+
+QTabBar::tab:hover {
+    background-color: #4a4a4a;  /* Цвет фона вкладки при наведении */
+    color: #f0f0f0;             /* Цвет текста на вкладке при наведении */
+}
+
+QTabWidget::pane {
+    border: 1px solid #555555;  /* Цвет рамки вокруг области вкладок */
+    background-color: #2e2e2e;  /* Цвет фона панели вкладок */
+}
