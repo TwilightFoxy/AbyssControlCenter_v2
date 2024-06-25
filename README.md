@@ -57,8 +57,6 @@
 Следуя этим шагам, вы настроите учетную запись службы для доступа к Google Таблице и сможете использовать ее в своем проекте.
 
 ## Как подключить Twitch учетную запись?
-![image](https://github.com/TwilightFoxy/coffee_bot/assets/62305710/ba77d069-3ab8-4da6-9023-a00f806e81ad)
-
 1. **Создание приложения на Twitch Developer Portal:**
     - Перейдите на [Twitch Developer Console](https://dev.twitch.tv/console/apps).
     - ![image](https://github.com/TwilightFoxy/coffee_bot/assets/62305710/be86589a-8569-4282-abf0-a552016357d9)
