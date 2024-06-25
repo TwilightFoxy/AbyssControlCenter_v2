@@ -55,6 +55,9 @@ class MainView(QMainWindow):
                 startup_tab = settings.get("startup_tab", "Главная")
                 self.set_startup_tab(startup_tab)
                 self.hide_tabs(settings)
+                window_width = settings.get("window_width", 1100)
+                window_height = settings.get("window_height", 800)
+                self.resize(window_width, window_height)
 
     # Установка начальной вкладки
     def set_startup_tab(self, tab_name):

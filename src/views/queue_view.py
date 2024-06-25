@@ -1,11 +1,12 @@
-from PyQt6.QtGui import QColor, QCursor
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QPushButton, \
     QLineEdit, QComboBox, QAbstractItemView, QGridLayout, QMessageBox, QCheckBox, QTextEdit, QHeaderView, QApplication, \
     QToolTip
+from PyQt6.QtGui import QColor, QCursor, QKeySequence, QShortcut
 from PyQt6.QtCore import Qt
 import json
 import os
 
+QUEUE_DATA_PATH = "data/queue_data.json"
 SETTINGS_PATH = "data/settings.json"
 DATA_DIR = "data"
 
@@ -17,7 +18,8 @@ STATUS_COLOR = {
 
 TYPE_COLOR = {
     "Бездна": QColor(238, 130, 238),  # фиолетовый
-    "Театр": QColor(135, 206, 250)  # светло-голубой
+    "Театр": QColor(135, 206, 250),  # светло-голубой
+    "Обзор": QColor(255, 215, 0)  # золотой
 }
 
 class QueueView(QWidget):
@@ -38,7 +40,7 @@ class QueueView(QWidget):
 
         grid_layout = self.create_grid_layout()
 
-        main_layout.addWidget(control_widget)  # Добавляем контейнер управления в основной layout
+        main_layout.addWidget(control_widget)
         main_layout.addLayout(grid_layout)
 
         self.setLayout(main_layout)
@@ -53,8 +55,9 @@ class QueueView(QWidget):
         self.column_select = QComboBox()
         self.column_select.addItems(["Текущая Вип", "Текущая Обычная", "Следующая Вип", "Следующая Обычная"])
 
-        self.add_abyss_button = QPushButton("Добавить Бездну")
-        self.add_theater_button = QPushButton("Добавить Театр")
+        self.add_abyss_button = QPushButton("Бездну")
+        self.add_theater_button = QPushButton("Театр")
+        self.add_overview_button = QPushButton("Обзор")
         self.up_button = QPushButton("Вверх")
         self.down_button = QPushButton("Вниз")
         self.hide_completed_checkbox = QCheckBox("Скрыть выполненные")
@@ -88,6 +91,7 @@ class QueueView(QWidget):
         add_buttons_layout = QHBoxLayout()
         add_buttons_layout.addWidget(self.add_abyss_button)
         add_buttons_layout.addWidget(self.add_theater_button)
+        add_buttons_layout.addWidget(self.add_overview_button)
         control_layout.addLayout(add_buttons_layout)
 
         move_buttons_layout = QHBoxLayout()
@@ -164,6 +168,7 @@ class QueueView(QWidget):
     def connect_signals(self):
         self.add_abyss_button.clicked.connect(lambda: self.add_to_queue("Бездна"))
         self.add_theater_button.clicked.connect(lambda: self.add_to_queue("Театр"))
+        self.add_overview_button.clicked.connect(lambda: self.add_to_queue("Обзор"))
         self.up_button.clicked.connect(self.move_up)
         self.down_button.clicked.connect(self.move_down)
         self.delete_button.clicked.connect(lambda: self.delete_selected_row())
@@ -178,6 +183,16 @@ class QueueView(QWidget):
         self.current_regular_table.cellClicked.connect(self.change_status)
         self.next_vip_table.cellClicked.connect(self.change_status)
         self.next_regular_table.cellClicked.connect(self.change_status)
+
+        # Горячие клавиши
+        self.delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Return), self)
+        self.delete_shortcut.activated.connect(self.delete_selected_row)
+
+        self.toggle_hide_completed_shortcut_equal = QShortcut(QKeySequence(Qt.Key.Key_Equal), self)
+        self.toggle_hide_completed_shortcut_equal.activated.connect(self.toggle_hide_completed)
+
+        self.toggle_hide_completed_shortcut_plus = QShortcut(QKeySequence(Qt.Key.Key_Plus), self)
+        self.toggle_hide_completed_shortcut_plus.activated.connect(self.toggle_hide_completed)
 
     # Копирование текста в буфер обмена
     def copy_to_clipboard(self, text):
@@ -196,8 +211,9 @@ class QueueView(QWidget):
     # Обработка двойного клика
     def cell_double_clicked(self, row, column):
         table = self.sender()
-        if column == 0:  # Разрешаем редактирование только первой ячейки (ник)
+        if column == 0 or column == 3:  # Разрешаем редактирование только первой и четвертой ячейки (ник и комментарий)
             table.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
+            table.editItem(table.item(row, column))  # Начинаем редактирование выбранной ячейки
         else:
             table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
@@ -208,10 +224,10 @@ class QueueView(QWidget):
     # Создание таблицы
     def create_table(self, headers):
         table = QTableWidget()
-        table.setColumnCount(len(headers))
-        table.setHorizontalHeaderLabels(headers)
+        table.setColumnCount(len(headers) + 1)
+        table.setHorizontalHeaderLabels(headers + ["Комментарий"])
         table.setRowCount(0)
-        table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)  # Разрешаем редактирование по двойному клику
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)  # Отключаем редактирование для всех столбцов по умолчанию
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setDragEnabled(True)
         table.setAcceptDrops(True)
@@ -219,6 +235,7 @@ class QueueView(QWidget):
         table.horizontalHeader().setStretchLastSection(True)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         table.verticalHeader().setDefaultSectionSize(20)
         table.cellClicked.connect(self.cell_clicked)
         table.cellDoubleClicked.connect(self.cell_double_clicked)
@@ -250,6 +267,7 @@ class QueueView(QWidget):
         table.setItem(row_count, column, QTableWidgetItem(name))
         table.setItem(row_count, column + 1, QTableWidgetItem("Ожидание"))
         table.setItem(row_count, column + 2, QTableWidgetItem(type_))
+        table.setItem(row_count, column + 3, QTableWidgetItem(""))
         self.set_row_color(table, row_count)
 
     # Изменение статуса элемента в таблице
@@ -261,7 +279,7 @@ class QueueView(QWidget):
             table.setItem(row, column, QTableWidgetItem(new_status))
         elif column == 2:
             current_type = table.item(row, column).text()
-            new_type = "Театр" if current_type == "Бездна" else "Бездна"
+            new_type = self.get_next_type(current_type)
             table.setItem(row, column, QTableWidgetItem(new_type))
         self.set_row_color(table, row)
         self.update_counts()
@@ -276,6 +294,16 @@ class QueueView(QWidget):
         elif current_status == "Отложено":
             return "Ожидание"
         return current_status
+
+    # Получение следующего типа
+    def get_next_type(self, current_type):
+        if current_type == "Бездна":
+            return "Театр"
+        elif current_type == "Театр":
+            return "Обзор"
+        elif current_type == "Обзор":
+            return "Бездна"
+        return current_type
 
     # Удаление выбранных строк с подтверждением
     def delete_selected_row(self):
@@ -313,14 +341,17 @@ class QueueView(QWidget):
                 name_item = next_table.item(row, 0)
                 status_item = next_table.item(row, 1)
                 type_item = next_table.item(row, 2)
+                comment_item = next_table.item(row, 3)
                 if name_item and status_item and type_item:
                     name = name_item.text()
                     status = status_item.text()
                     type_ = type_item.text()
+                    comment = comment_item.text() if comment_item else ""
                     current_table.insertRow(current_table.rowCount())
                     current_table.setItem(current_table.rowCount() - 1, 0, QTableWidgetItem(name))
                     current_table.setItem(current_table.rowCount() - 1, 1, QTableWidgetItem(status))
                     current_table.setItem(current_table.rowCount() - 1, 2, QTableWidgetItem(type_))
+                    current_table.setItem(current_table.rowCount() - 1, 3, QTableWidgetItem(comment))
                     self.set_row_color(current_table, current_table.rowCount() - 1)
             next_table.setRowCount(0)
         self.update_counts()
@@ -442,27 +473,26 @@ class QueueView(QWidget):
             "next_vip": self.get_table_data(self.next_vip_table),
             "next_regular": self.get_table_data(self.next_regular_table)
         }
-        if os.path.exists(SETTINGS_PATH):
-            with open(SETTINGS_PATH, "r") as file:
-                settings = json.load(file)
-        else:
-            settings = {}
-        settings["queue_data"] = data
-        with open(SETTINGS_PATH, "w") as file:
-            json.dump(settings, file, ensure_ascii=False, indent=4)
+        with open(QUEUE_DATA_PATH, "w", encoding="utf-8") as file:
+            json.dump(data, file, ensure_ascii=False, indent=4)
         self.update_output_file()
 
-    # Загрузка данных из файла
     def load_data(self):
-        if os.path.exists(SETTINGS_PATH):
-            with open(SETTINGS_PATH, "r") as file:
-                settings = json.load(file)
-                data = settings.get("queue_data", {})
-                self.set_table_data(self.current_vip_table, data.get("current_vip", []))
-                self.set_table_data(self.current_regular_table, data.get("current_regular", []))
-                self.set_table_data(self.next_vip_table, data.get("next_vip", []))
-                self.set_table_data(self.next_regular_table, data.get("next_regular", []))
-            self.update_counts()
+        if os.path.exists(QUEUE_DATA_PATH):
+            with open(QUEUE_DATA_PATH, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                if data:
+                    self.set_table_data(self.current_vip_table, self.ensure_four_columns(data.get("current_vip", [])))
+                    self.set_table_data(self.current_regular_table,
+                                        self.ensure_four_columns(data.get("current_regular", [])))
+                    self.set_table_data(self.next_vip_table, self.ensure_four_columns(data.get("next_vip", [])))
+                    self.set_table_data(self.next_regular_table, self.ensure_four_columns(data.get("next_regular", [])))
+                self.update_counts()
+    def ensure_four_columns(self, data):
+        for row in data:
+            while len(row) < 4:
+                row.append("")
+        return data
 
     # Получение данных из таблицы
     def get_table_data(self, table):

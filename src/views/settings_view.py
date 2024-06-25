@@ -114,25 +114,22 @@ class SettingsView(QWidget):
 
     # Сохранение настроек в файл
     def save_settings(self):
-        if os.path.exists(SETTINGS_PATH):
-            with open(SETTINGS_PATH, "r") as file:
-                settings = json.load(file)
-        else:
-            settings = {}
-        settings.update({
+        settings = {
             "startup_tab": self.startup_tab_select.currentText(),
             "hide_main": self.hide_main_checkbox.isChecked(),
             "hide_commands": self.hide_commands_checkbox.isChecked(),
             "hide_queue": self.hide_queue_checkbox.isChecked(),
             "window_width": int(self.width_input.text()) if self.width_input.text().isdigit() else 1100,
             "window_height": int(self.height_input.text()) if self.height_input.text().isdigit() else 800,
-            "auth_token": self.encrypt(self.token_input.text()) if self.token_input.text() else ""
-        })
+        }
+        with open(SETTINGS_PATH, "r") as file:
+            existing_settings = json.load(file)
+        existing_settings.update(settings)
         with open(SETTINGS_PATH, "w") as file:
-            json.dump(settings, file, ensure_ascii=False, indent=4)
+            json.dump(existing_settings, file, ensure_ascii=False, indent=4)
         self.restart_app()
 
     # Перезапуск приложения для применения настроек
     def restart_app(self):
-        self.parent().close()  # Закрываем текущее приложение
-        os.execl(sys.executable, sys.executable, *sys.argv)  # Запускаем новое приложение с сохраненными настройками
+        self.parent().close()
+        os.execl(sys.executable, sys.executable, *sys.argv)
