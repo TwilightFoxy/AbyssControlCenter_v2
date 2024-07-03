@@ -1,8 +1,8 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QPushButton, \
     QLineEdit, QComboBox, QAbstractItemView, QGridLayout, QMessageBox, QCheckBox, QTextEdit, QHeaderView, QApplication, \
-    QToolTip
+    QToolTip, QTableWidget, QTableWidgetItem, QAbstractItemView
 from PyQt6.QtGui import QColor, QCursor, QKeySequence, QShortcut
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 import json
 import os
 
@@ -21,6 +21,56 @@ TYPE_COLOR = {
     "Театр": QColor(135, 206, 250),  # светло-голубой
     "Обзор": QColor(255, 215, 0)  # золотой
 }
+
+
+class DraggableTableWidget(QTableWidget):
+    drop_completed = pyqtSignal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        source = event.source()
+        if isinstance(source, QTableWidget) and source != self:
+            selected_items = source.selectedItems()
+            if not selected_items:
+                return
+
+            row_positions = sorted(set(item.row() for item in selected_items))
+            new_rows = []
+            for row in row_positions:
+                row_data = []
+                for column in range(source.columnCount()):
+                    item = source.item(row, column)
+                    row_data.append(item.text() if item else '')
+
+                new_row = self.rowCount()
+                self.insertRow(new_row)
+                new_rows.append(new_row)
+                for column, text in enumerate(row_data):
+                    self.setItem(new_row, column, QTableWidgetItem(text))
+
+                source.removeRow(row)
+
+            self.resizeColumnsToContents()
+            self.drop_completed.emit((self, new_rows))
+            event.accept()
+        elif isinstance(source, QTableWidget) and source == self:
+            # If dragging within the same table, cancel the event
+            event.ignore()
+        else:
+            super().dropEvent(event)
+
 
 class QueueView(QWidget):
     def __init__(self):
@@ -185,7 +235,10 @@ class QueueView(QWidget):
         self.next_regular_table.cellClicked.connect(self.change_status)
 
         # Горячие клавиши
-        self.delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Return), self)
+        self.edit_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Return), self)
+        self.edit_shortcut.activated.connect(self.toggle_edit_mode)
+
+        self.delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Backspace), self)
         self.delete_shortcut.activated.connect(self.delete_selected_row)
 
         self.toggle_hide_completed_shortcut_equal = QShortcut(QKeySequence(Qt.Key.Key_Equal), self)
@@ -208,38 +261,57 @@ class QueueView(QWidget):
             if name_item:
                 self.copy_to_clipboard(name_item.text())
 
-    # Обработка двойного клика
-    def cell_double_clicked(self, row, column):
-        table = self.sender()
-        if column == 0 or column == 3:  # Разрешаем редактирование только первой и четвертой ячейки (ник и комментарий)
-            table.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
-            table.editItem(table.item(row, column))  # Начинаем редактирование выбранной ячейки
-        else:
-            table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-
     # Переключение состояния чекбокса "Скрыть выполненные"
     def toggle_hide_completed(self):
         self.hide_completed_checkbox.setChecked(not self.hide_completed_checkbox.isChecked())
 
     # Создание таблицы
     def create_table(self, headers):
-        table = QTableWidget()
+        table = DraggableTableWidget()
         table.setColumnCount(len(headers) + 1)
         table.setHorizontalHeaderLabels(headers + ["Комментарий"])
         table.setRowCount(0)
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)  # Отключаем редактирование для всех столбцов по умолчанию
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setDragEnabled(True)
         table.setAcceptDrops(True)
         table.setDropIndicatorShown(True)
         table.horizontalHeader().setStretchLastSection(True)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setDefaultSectionSize(20)
         table.cellClicked.connect(self.cell_clicked)
-        table.cellDoubleClicked.connect(self.cell_double_clicked)
+        table.cellDoubleClicked.connect(self.cell_double_clicked)  # Подключаем обработчик двойного клика
+        table.itemChanged.connect(self.save_data)  # Сохраняем изменения при редактировании
+        table.drop_completed.connect(self.on_drop_completed)  # Обработка завершения перетаскивания
         return table
+
+    # Обработчик двойного клика для редактирования комментариев
+    def cell_double_clicked(self, row, column):
+        table = self.sender()
+        if column == table.columnCount() - 1:  # Разрешаем редактирование только для столбца "Комментарий"
+            table.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
+            table.editItem(table.item(row, column))
+            table.setEditTriggers(
+                QAbstractItemView.EditTrigger.NoEditTriggers)  # Снова отключаем редактирование для всех столбцов по умолчанию
+
+    def on_drop_completed(self, data):
+        table, new_rows = data
+        for row in new_rows:
+            self.set_row_color(table, row)
+        self.update_counts()
+        self.save_data()
+    # Переключение режима редактирования ячеек
+    def toggle_edit_mode(self):
+        table = self.get_focused_table()
+        if table:
+            selected_items = table.selectedItems()
+            if selected_items:
+                for item in selected_items:
+                    if item.flags() & Qt.ItemFlag.ItemIsEditable:
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    else:
+                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                table.editItem(selected_items[0])
 
     # Добавление элемента в очередь
     def add_to_queue(self, type_):
@@ -269,6 +341,7 @@ class QueueView(QWidget):
         table.setItem(row_count, column + 2, QTableWidgetItem(type_))
         table.setItem(row_count, column + 3, QTableWidgetItem(""))
         self.set_row_color(table, row_count)
+        table.resizeColumnsToContents()
 
     # Изменение статуса элемента в таблице
     def change_status(self, row, column):
@@ -316,7 +389,8 @@ class QueueView(QWidget):
             confirmation_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             confirmation_box.button(QMessageBox.StandardButton.Yes).setShortcut(Qt.Key.Key_Return)
             confirmation_box.button(QMessageBox.StandardButton.No).setShortcut(Qt.Key.Key_Escape)
-            confirmation_box.button(QMessageBox.StandardButton.Yes).clicked.connect(lambda: self.remove_selected_rows(current_table, selected_rows))
+            confirmation_box.button(QMessageBox.StandardButton.Yes).clicked.connect(
+                lambda: self.remove_selected_rows(current_table, selected_rows))
             confirmation_box.show()
 
     # Удаление выбранных строк
@@ -336,7 +410,9 @@ class QueueView(QWidget):
 
     # Перенос следующей очереди в текущую
     def transfer_to_current(self):
-        for next_table, current_table in [(self.next_vip_table, self.current_vip_table), (self.next_regular_table, self.current_regular_table)]:
+        for next_table, current_table in [(self.next_vip_table, self.current_vip_table),
+                                          (self.next_regular_table, self.current_regular_table)]:
+            rows_to_remove = []
             for row in range(next_table.rowCount()):
                 name_item = next_table.item(row, 0)
                 status_item = next_table.item(row, 1)
@@ -353,15 +429,21 @@ class QueueView(QWidget):
                     current_table.setItem(current_table.rowCount() - 1, 2, QTableWidgetItem(type_))
                     current_table.setItem(current_table.rowCount() - 1, 3, QTableWidgetItem(comment))
                     self.set_row_color(current_table, current_table.rowCount() - 1)
-            next_table.setRowCount(0)
+                    rows_to_remove.append(row)
+
+            for row in sorted(rows_to_remove, reverse=True):
+                next_table.removeRow(row)
+
         self.update_counts()
         self.save_data()
 
     # Удаление выполненных элементов
     def delete_completed(self):
-        reply = QMessageBox.question(self, "Подтверждение", "Вы уверены, что хотите удалить все выполненные строки?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(self, "Подтверждение", "Вы уверены, что хотите удалить все выполненные строки?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            for table in [self.current_vip_table, self.current_regular_table, self.next_vip_table, self.next_regular_table]:
+            for table in [self.current_vip_table, self.current_regular_table, self.next_vip_table,
+                          self.next_regular_table]:
                 for row in reversed(range(table.rowCount())):
                     if table.item(row, 1).text() == "Выполнено":
                         table.removeRow(row)
@@ -379,7 +461,8 @@ class QueueView(QWidget):
     def count_non_completed(self, table):
         count = 0
         for row in range(table.rowCount()):
-            if table.item(row, 1).text() != "Выполнено":
+            status_item = table.item(row, 1)
+            if status_item and status_item.text() != "Выполнено":
                 count += 1
         return count
 
@@ -457,7 +540,8 @@ class QueueView(QWidget):
         else:
             template_text = ""
 
-        output_text = template_text.format(vip=vip_count, norm=norm_count, vip_next=vip_next_count, norm_next=norm_next_count, all_next=all_next_count)
+        output_text = template_text.format(vip=vip_count, norm=norm_count, vip_next=vip_next_count,
+                                           norm_next=norm_next_count, all_next=all_next_count)
 
         lines = output_text.split('\n')
         filtered_lines = [line for line in lines if '{all_next}' not in line or all_next_count != 0]
@@ -488,6 +572,8 @@ class QueueView(QWidget):
                     self.set_table_data(self.next_vip_table, self.ensure_four_columns(data.get("next_vip", [])))
                     self.set_table_data(self.next_regular_table, self.ensure_four_columns(data.get("next_regular", [])))
                 self.update_counts()
+        self.load_template()
+
     def ensure_four_columns(self, data):
         for row in data:
             while len(row) < 4:
@@ -515,8 +601,11 @@ class QueueView(QWidget):
             row = table.rowCount()
             table.insertRow(row)
             for column, text in enumerate(row_data):
-                table.setItem(row, column, QTableWidgetItem(text))
+                item = QTableWidgetItem(text)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                table.setItem(row, column, item)
             self.set_row_color(table, row)
+        table.resizeColumnsToContents()
 
     # Установка цвета строки в таблице
     def set_row_color(self, table, row):
