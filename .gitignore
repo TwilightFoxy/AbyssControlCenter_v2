@@ -13,5 +13,3 @@ output.txt
 
 # Ignore data files
 data
-
-src/utils

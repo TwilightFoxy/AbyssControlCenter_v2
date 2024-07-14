@@ -1,10 +1,12 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QPushButton, \
     QLineEdit, QComboBox, QAbstractItemView, QGridLayout, QMessageBox, QCheckBox, QTextEdit, QHeaderView, QApplication, \
-    QToolTip, QTableWidget, QTableWidgetItem, QAbstractItemView
+    QToolTip
 from PyQt6.QtGui import QColor, QCursor, QKeySequence, QShortcut
 from PyQt6.QtCore import Qt, pyqtSignal
 import json
 import os
+from src.utils.draggable_table_widget import DraggableTableWidget
+from src.utils.google_sheets_sync import GoogleSheetsSync
 
 QUEUE_DATA_PATH = "data/queue_data.json"
 SETTINGS_PATH = "data/settings.json"
@@ -22,60 +24,11 @@ TYPE_COLOR = {
     "Обзор": QColor(255, 215, 0)  # золотой
 }
 
-
-class DraggableTableWidget(QTableWidget):
-    drop_completed = pyqtSignal(object)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDropIndicatorShown(True)
-        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
-            event.accept()
-        else:
-            event.ignore()
-
-    def dropEvent(self, event):
-        source = event.source()
-        if isinstance(source, QTableWidget) and source != self:
-            selected_items = source.selectedItems()
-            if not selected_items:
-                return
-
-            row_positions = sorted(set(item.row() for item in selected_items))
-            new_rows = []
-            for row in row_positions:
-                row_data = []
-                for column in range(source.columnCount()):
-                    item = source.item(row, column)
-                    row_data.append(item.text() if item else '')
-
-                new_row = self.rowCount()
-                self.insertRow(new_row)
-                new_rows.append(new_row)
-                for column, text in enumerate(row_data):
-                    self.setItem(new_row, column, QTableWidgetItem(text))
-
-                source.removeRow(row)
-
-            self.resizeColumnsToContents()
-            self.drop_completed.emit((self, new_rows))
-            event.accept()
-        elif isinstance(source, QTableWidget) and source == self:
-            # If dragging within the same table, cancel the event
-            event.ignore()
-        else:
-            super().dropEvent(event)
-
-
 class QueueView(QWidget):
     def __init__(self):
         super().__init__()
 
+        self.google_sheets_sync = None
         self.init_ui()
         self.connect_signals()
         self.load_data()
@@ -114,6 +67,8 @@ class QueueView(QWidget):
         self.delete_button = QPushButton("Удалить выбранную строку")
         self.transfer_button = QPushButton("Перенести следующую в текущую")
         self.delete_completed_button = QPushButton("Удалить выполненные")
+        self.send_to_google_sheets_button = QPushButton("Отправить в Google Таблицу")
+        self.send_to_google_sheets_button.clicked.connect(self.send_data_to_google_sheets)
 
         delete_button_style = """
             QPushButton {
@@ -153,6 +108,7 @@ class QueueView(QWidget):
         control_layout.addWidget(self.delete_button)
         control_layout.addWidget(self.delete_completed_button)
         control_layout.addWidget(self.transfer_button)
+        control_layout.addWidget(self.send_to_google_sheets_button)
 
         template_label_layout = QHBoxLayout()
         template_label = QLabel("Шаблон")
@@ -332,14 +288,21 @@ class QueueView(QWidget):
         self.update_counts()
         self.save_data()
 
+    def add_comment_to_last_row(self, table, comment):
+        row_count = table.rowCount()
+        if row_count > 0:
+            table.setItem(row_count - 1, 3, QTableWidgetItem(comment))
+            self.set_row_color(table, row_count - 1)
+            table.resizeColumnsToContents()
+
     # Добавление элемента в таблицу
-    def add_to_table(self, table, column, name, type_):
+    def add_to_table(self, table, column, name, type_, customer=None):
         row_count = table.rowCount()
         table.insertRow(row_count)
         table.setItem(row_count, column, QTableWidgetItem(name))
         table.setItem(row_count, column + 1, QTableWidgetItem("Ожидание"))
         table.setItem(row_count, column + 2, QTableWidgetItem(type_))
-        table.setItem(row_count, column + 3, QTableWidgetItem(""))
+        table.setItem(row_count, column + 3, QTableWidgetItem(customer if customer else ""))
         self.set_row_color(table, row_count)
         table.resizeColumnsToContents()
 
@@ -634,3 +597,28 @@ class QueueView(QWidget):
             return self.next_regular_table
         else:
             return self.current_vip_table
+
+    def sync_with_google_sheets(self, sheets_data):
+        if self.google_sheets_sync:
+            headers = ["Сообщение", "Статус", "Тип", "Комментарий"]
+            data = [
+                sheets_data.get("Текущая Вип", []),
+                sheets_data.get("Текущая Обычная", []),
+                sheets_data.get("Следующая Вип", []),
+                sheets_data.get("Следующая Обычная", [])
+            ]
+            self.google_sheets_sync.update_sheet(self.google_sheets_sync.sheet.title, headers, data)
+
+    def send_data_to_google_sheets(self):
+        sheets_data = {
+            "Текущая Вип": self.get_table_data(self.current_vip_table),
+            "Текущая Обычная": self.get_table_data(self.current_regular_table),
+            "Следующая Вип": self.get_table_data(self.next_vip_table),
+            "Следующая Обычная": self.get_table_data(self.next_regular_table)
+        }
+        self.sync_with_google_sheets(sheets_data)
+    def load_settings(self):
+        if os.path.exists(SETTINGS_PATH):
+            with open(SETTINGS_PATH, "r") as file:
+                return json.load(file)
+        return {}

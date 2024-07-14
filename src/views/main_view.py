@@ -6,6 +6,8 @@ from .commands_view import CommandsView
 from .queue_view import QueueView
 from .settings_view import SettingsView
 
+from src.utils.google_sheets_sync import GoogleSheetsSync
+
 SETTINGS_PATH = "data/settings.json"
 
 class MainView(QMainWindow):
@@ -59,7 +61,12 @@ class MainView(QMainWindow):
                 window_height = settings.get("window_height", 800)
                 self.resize(window_width, window_height)
 
-    # Установка начальной вкладки
+                # Устанавливаем GoogleSheetsSync для queue_view
+                sheet_id = settings.get("sheet_id")
+                sheet_name = settings.get("sheet_name")
+                if sheet_id:
+                    self.queue_view.google_sheets_sync = GoogleSheetsSync(sheet_id)
+
     def set_startup_tab(self, tab_name):
         tab_index = {
             "Главная": 0,

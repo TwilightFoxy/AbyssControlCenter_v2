@@ -1,12 +1,13 @@
 import os
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QGridLayout, QHBoxLayout, QSpacerItem, QSizePolicy
+import json
+import asyncio
+import threading  # Добавляем импорт threading
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QGridLayout
 from PyQt6.QtCore import QThread, pyqtSignal
 from twitchio.ext import commands
-import asyncio
-import json
-from cryptography.fernet import Fernet
+from src.utils.rewards_tracker import RewardsTracker  # Импортируем RewardsTracker
+
 SETTINGS_PATH = "data/settings.json"
-DATA_DIR = "data"
 
 class CommandsView(QWidget):
     connection_status_signal = pyqtSignal(str)
@@ -14,158 +15,108 @@ class CommandsView(QWidget):
     def __init__(self, queue_view):
         super().__init__()
         self.queue_view = queue_view
-
         self.init_ui()
         self.connect_signals()
         self.load_commands()
 
-    # Инициализация пользовательского интерфейса
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # Информация о подключении
         self.connection_info_label = QLabel("Информация о подключении")
         self.connection_status = QLabel("Статус: не подключен")
 
-        connection_layout = QVBoxLayout()
-        connection_layout.addWidget(self.connection_info_label)
-        connection_layout.addWidget(self.connection_status)
-        connection_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+        self.start_bot_button = QPushButton("Подключиться")
+        self.stop_bot_button = QPushButton("Отключиться")
 
-        # Название канала
-        self.channel_label = QLabel("Название канала")
-        self.channel_input = QLineEdit()
-
-        # Кнопки управления
-        self.save_button = QPushButton("Сохранить")
-        self.start_bot_button = QPushButton("Запустить бота")
-        self.stop_bot_button = QPushButton("Остановить бота")
-
-        # Сетка для организации кнопок и ввода
         button_layout = QGridLayout()
-        button_layout.addWidget(self.channel_label, 0, 0)
-        button_layout.addWidget(self.channel_input, 0, 1)
-        button_layout.addWidget(self.save_button, 1, 0)
-        button_layout.addWidget(self.start_bot_button, 1, 1)
-        button_layout.addWidget(self.stop_bot_button, 2, 0, 1, 2)
+        button_layout.addWidget(self.start_bot_button, 0, 0)
+        button_layout.addWidget(self.stop_bot_button, 0, 1)
 
-        # Команды и описание
         self.commands_label = QLabel("Команды")
         self.commands_description = QLabel("!очередь - показать текущую очередь")
 
-        layout.addLayout(connection_layout)
+        layout.addWidget(self.connection_info_label)
+        layout.addWidget(self.connection_status)
+        layout.addLayout(button_layout)
         layout.addWidget(self.commands_label)
         layout.addWidget(self.commands_description)
-        layout.addLayout(button_layout)
 
         self.setLayout(layout)
 
-    # Подключение сигналалов к слотам
     def connect_signals(self):
-        self.save_button.clicked.connect(self.save_commands)
         self.start_bot_button.clicked.connect(self.start_twitch_bot)
         self.stop_bot_button.clicked.connect(self.stop_twitch_bot)
 
-    # Шифрование данных
-    def encrypt(self, data):
-        f = self.get_fernet()
-        return f.encrypt(data.encode()).decode()
-
-    # Дешифрование данных
-    def decrypt(self, data):
-        f = self.get_fernet()
-        return f.decrypt(data.encode()).decode()
-
-    # Загрузка ключа шифрования
-    def load_key(self):
-        key_path = os.path.join(DATA_DIR, "secret.key")
-        if os.path.exists(key_path):
-            with open(key_path, "rb") as key_file:
-                return key_file.read()
-        key = self.generate_key()
-        with open(key_path, "wb") as key_file:
-            key_file.write(key)
-        return key
-
-    # Генерация ключа шифрования
-    def generate_key(self):
-        return Fernet.generate_key()
-
-    # Получение объекта Fernet для шифрования и дешифрования
-    def get_fernet(self):
-        if not hasattr(self, '_fernet'):
-            self._fernet = Fernet(self.load_key())
-        return self._fernet
-
-    # Сохранение настроек команд в файл
-    def save_commands(self):
-        if os.path.exists(SETTINGS_PATH):
-            with open(SETTINGS_PATH, "r") as file:
-                settings = json.load(file)
-        else:
-            settings = {}
-        settings["channel"] = self.channel_input.text()
-        with open(SETTINGS_PATH, "w") as file:
-            json.dump(settings, file, ensure_ascii=False, indent=4)
-
-    # Загрузка настроек команд из файла
     def load_commands(self):
         if os.path.exists(SETTINGS_PATH):
             with open(SETTINGS_PATH, "r") as file:
                 settings = json.load(file)
-                self.channel_input.setText(settings.get("channel", ""))
-                encrypted_token = settings.get("auth_token", "")
-                if encrypted_token:
-                    self.auth_token = self.decrypt(encrypted_token)
-                else:
-                    self.auth_token = ""
+                self.channel = settings.get("channel", "")
+                self.auth_token = settings.get("auth_token", "")
+                self.client_id = settings.get("client_id", "")
+                self.user_id = settings.get("user_id", "")
+                self.use_bot = settings.get("use_bot", True)
+                self.enable_rewards = settings.get("enable_rewards", False)
+                self.reward_selectors = settings.get("reward_selectors", {})
+                self.rewards_checked = settings.get("rewards_checked", False)
 
-    # Запуск Twitch бота в отдельном потоке
     def start_twitch_bot(self):
-        channel = self.channel_input.text()
-        self.thread = BotThread(self.queue_view, channel, self.auth_token)
+        self.load_commands()  # Загружаем настройки при запуске бота
+        if self.use_bot:
+            token = self.auth_token
+        else:
+            token = self.bot_auth_token
+
+        self.thread = BotThread(self.queue_view, self.channel, token, self.enable_rewards, self.reward_selectors)
         self.thread.connection_status_signal.connect(self.update_connection_status)
         self.thread.start()
 
-    # Остановка Twitch бота
+        if self.enable_rewards:
+            self.rewards_tracker = RewardsTracker(self.user_id, self.client_id, self.auth_token, self.queue_view, self.reward_selectors)
+            self.rewards_tracker_thread = threading.Thread(target=self.rewards_tracker.start)
+            self.rewards_tracker_thread.start()
+
     def stop_twitch_bot(self):
         if hasattr(self, 'thread') and self.thread.isRunning():
             self.thread.terminate()
             self.update_connection_status("Статус: не подключен")
 
-    # Обновление статуса подключения
+        if hasattr(self, 'rewards_tracker'):
+            self.rewards_tracker.stop()
+
     def update_connection_status(self, status):
         self.connection_status.setText(status)
 
 class BotThread(QThread):
     connection_status_signal = pyqtSignal(str)
 
-    def __init__(self, queue_view, channel, auth_token):
+    def __init__(self, queue_view, channel, token, enable_rewards, reward_selectors):
         super().__init__()
         self.queue_view = queue_view
         self.channel = channel
-        self.auth_token = auth_token
+        self.token = token
+        self.enable_rewards = enable_rewards
+        self.reward_selectors = reward_selectors
 
-    # Запуск Twitch бота в новом событии loop
     def run(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        self.bot = TwitchBot(self.queue_view, self.channel, self.auth_token, self.connection_status_signal)
+        self.bot = TwitchBot(self.queue_view, self.channel, self.token, self.connection_status_signal, self.enable_rewards, self.reward_selectors)
         loop.run_until_complete(self.bot.start())
 
 class TwitchBot(commands.Bot):
-    def __init__(self, queue_view, channel, auth_token, connection_status_signal):
-        super().__init__(token=auth_token, prefix='!', initial_channels=[channel])
+    def __init__(self, queue_view, channel, token, connection_status_signal, enable_rewards, reward_selectors):
+        super().__init__(token=token, prefix='!', initial_channels=[channel])
         self.queue_view = queue_view
         self.channel = channel
         self.connection_status_signal = connection_status_signal
+        self.enable_rewards = enable_rewards
+        self.reward_selectors = reward_selectors
 
-    # Событие, срабатывающее при подключении бота
     async def event_ready(self):
         status = f'Подключен к каналу {self.channel} как {self.nick}'
         self.connection_status_signal.emit(status)
 
-    # Команда для отображения очереди
     @commands.command(name='очередь')
     async def my_command(self, ctx):
         current_vip_queue = self.get_queue_text(self.queue_view.current_vip_table, "Вип очередь")
@@ -173,22 +124,75 @@ class TwitchBot(commands.Bot):
         next_vip_queue = self.get_queue_text(self.queue_view.next_vip_table, "Следующая Вип очередь")
         next_regular_queue = self.get_queue_text(self.queue_view.next_regular_table, "Следующая Обычная очередь")
 
-        message_parts = [current_vip_queue, current_regular_queue, next_vip_queue, next_regular_queue]
-        message_parts = [part for part in message_parts if part]
+        message_parts = []
+        if current_vip_queue:
+            message_parts.append(current_vip_queue)
+        if current_regular_queue:
+            message_parts.append(current_regular_queue)
+        if next_vip_queue:
+            message_parts.append(next_vip_queue)
+        if next_regular_queue:
+            message_parts.append(next_regular_queue)
 
-        message = "\n\n".join(message_parts) if message_parts else "Очередь пуста."
+        message = " | ".join(message_parts) if message_parts else "Очередь пуста."
+
+        settings = self.queue_view.load_settings()
+        table_link = settings.get("table_link", "")
+
+        if table_link:
+            message += f" | Ссылка на полную таблицу: {table_link}"
+
+        print(f"Длина сообщения: {len(message)}")
+        print(f"Сообщение: {message}")
+
+        if len(message) > 250:
+            message = f"Ссылка на полную таблицу: {table_link}"
 
         await ctx.reply(message)
 
-    # Получение текста очереди из таблицы
     def get_queue_text(self, table, title):
         queue_text = []
         for row in range(table.rowCount()):
             name_item = table.item(row, 0)
             status_item = table.item(row, 1)
             if name_item and status_item and status_item.text() != "Выполнено":
-                queue_text.append(f" {name_item.text()}")
+                queue_text.append(f"{name_item.text()}")
 
         if queue_text:
-            return f"{title}:\n" + ",\n".join(queue_text)
+            return f"{title}: " + ", ".join(queue_text)
         return ""
+
+    async def event_message(self, message):
+        if message.author is None:
+            return
+        await self.handle_commands(message)
+        if self.enable_rewards and message.tags.get('custom-reward-id'):
+            await self.handle_reward(message)
+
+    async def handle_reward(self, message):
+        reward_id = message.tags['custom-reward-id']
+        user_input = message.content
+        reward_title = next((title for title, id in self.reward_selectors.items() if id == reward_id), None)
+        if reward_title:
+            reward_action = self.reward_selectors[reward_title]
+            if reward_action == "Бездна себе –":
+                self.queue_view.add_to_table(self.queue_view.current_regular_table, 0, message.author.name, "Бездна")
+            elif reward_action == "Бездна другу –":
+                self.queue_view.add_to_table(self.queue_view.current_regular_table, 0, user_input, "Бездна",
+                                             f'заказал {message.author.name}')
+            elif reward_action == "Обзор себе –":
+                self.queue_view.add_to_table(self.queue_view.current_regular_table, 0, message.author.name, "Обзор")
+            elif reward_action == "Обзор другу –":
+                self.queue_view.add_to_table(self.queue_view.current_regular_table, 0, user_input, "Обзор",
+                                             f'заказал {message.author.name}')
+            elif reward_action == "Театр себе –":
+                self.queue_view.add_to_table(self.queue_view.current_regular_table, 0, message.author.name, "Театр")
+            elif reward_action == "Театр другу –":
+                self.queue_view.add_to_table(self.queue_view.current_regular_table, 0, user_input, "Театр",
+                                             f'заказал {message.author.name}')
+            self.queue_view.update_counts()
+            self.queue_view.save_data()
+            print(f"Reward '{reward_action}' purchased by {message.author.name}: {user_input}")
+        else:
+            print(f"Reward ID '{reward_id}' не найден в reward_selectors")
+
