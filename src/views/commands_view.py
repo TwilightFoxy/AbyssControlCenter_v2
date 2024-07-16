@@ -145,7 +145,7 @@ class TwitchBot(commands.Bot):
         print(f"Длина сообщения: {len(message)}")
         print(f"Сообщение: {message}")
 
-        if len(message) > 250:
+        if len(message) > 495:
             message = f"Ссылка на полную таблицу: {table_link}"
 
         await ctx.reply(message)

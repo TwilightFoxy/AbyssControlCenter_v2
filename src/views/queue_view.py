@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWid
     QLineEdit, QComboBox, QAbstractItemView, QGridLayout, QMessageBox, QCheckBox, QTextEdit, QHeaderView, QApplication, \
     QToolTip
 from PyQt6.QtGui import QColor, QCursor, QKeySequence, QShortcut
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QThread
 import json
 import os
 from src.utils.draggable_table_widget import DraggableTableWidget
@@ -24,16 +24,35 @@ TYPE_COLOR = {
     "Обзор": QColor(255, 215, 0)  # золотой
 }
 
+class SyncThread(QThread):
+    def __init__(self, google_sheets_sync, queue_data):
+        super().__init__()
+        self.google_sheets_sync = google_sheets_sync
+        self.queue_data = queue_data
+
+    def run(self):
+        headers = ["Сообщение", "Статус", "Тип", "Комментарий"]
+        combined_data = []
+        for key in ["current_vip", "current_regular", "next_vip", "next_regular"]:
+            combined_data.extend(self.queue_data.get(key, []))
+        sheet_name = "ВАШЕ_ИМЯ_ЛИСТА"  # Замените это на фактическое имя листа
+        self.google_sheets_sync.update_sheet(sheet_name, headers, combined_data)
+
 class QueueView(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.google_sheets_sync = None
+        self.google_sheets_sync = None  # Инициализация переменной
+        self.sync_thread = None
+
         self.init_ui()
         self.connect_signals()
         self.load_data()
 
-    # Инициализация пользовательского интерфейса
+        settings = self.load_settings()
+        sheet_id = settings.get("sheet_id")
+        sheet_name = settings.get("sheet_name")
+
     def init_ui(self):
         main_layout = QHBoxLayout()
 
@@ -47,6 +66,35 @@ class QueueView(QWidget):
         main_layout.addLayout(grid_layout)
 
         self.setLayout(main_layout)
+
+    def apply_filters(self):
+        filter_abyss = self.filter_abyss_checkbox.isChecked()
+        filter_theater = self.filter_theater_checkbox.isChecked()
+        filter_overview = self.filter_overview_checkbox.isChecked()
+
+        if filter_abyss:
+            self.filter_theater_checkbox.setChecked(False)
+            self.filter_overview_checkbox.setChecked(False)
+        elif filter_theater:
+            self.filter_abyss_checkbox.setChecked(False)
+            self.filter_overview_checkbox.setChecked(False)
+        elif filter_overview:
+            self.filter_abyss_checkbox.setChecked(False)
+            self.filter_theater_checkbox.setChecked(False)
+
+        for table in [self.current_vip_table, self.current_regular_table, self.next_vip_table, self.next_regular_table]:
+            for row in range(table.rowCount()):
+                type_item = table.item(row, 2)
+                if type_item:
+                    show_row = True
+                    if filter_abyss and type_item.text() != "Бездна":
+                        show_row = False
+                    elif filter_theater and type_item.text() != "Театр":
+                        show_row = False
+                    elif filter_overview and type_item.text() != "Обзор":
+                        show_row = False
+
+                    table.setRowHidden(row, not show_row)
 
     # Создание виджета управления
     def create_control_widget(self):
@@ -67,8 +115,17 @@ class QueueView(QWidget):
         self.delete_button = QPushButton("Удалить выбранную строку")
         self.transfer_button = QPushButton("Перенести следующую в текущую")
         self.delete_completed_button = QPushButton("Удалить выполненные")
-        self.send_to_google_sheets_button = QPushButton("Отправить в Google Таблицу")
-        self.send_to_google_sheets_button.clicked.connect(self.send_data_to_google_sheets)
+
+        self.filter_abyss_checkbox = QCheckBox("Только Бездна")
+        self.filter_theater_checkbox = QCheckBox("Только Театр")
+        self.filter_overview_checkbox = QCheckBox("Только Обзор")
+
+        self.filter_abyss_checkbox.stateChanged.connect(self.apply_filters)
+        self.filter_theater_checkbox.stateChanged.connect(self.apply_filters)
+        self.filter_overview_checkbox.stateChanged.connect(self.apply_filters)
+
+        self.send_to_google_sheets_button = QPushButton("Отправить в Google Таблицу")  # Добавлено
+        self.send_to_google_sheets_button.clicked.connect(self.send_data_to_google_sheets)  # Добавлено
 
         delete_button_style = """
             QPushButton {
@@ -105,10 +162,13 @@ class QueueView(QWidget):
         control_layout.addLayout(move_buttons_layout)
 
         control_layout.addWidget(self.hide_completed_checkbox)
+        control_layout.addWidget(self.filter_abyss_checkbox)
+        control_layout.addWidget(self.filter_theater_checkbox)
+        control_layout.addWidget(self.filter_overview_checkbox)
         control_layout.addWidget(self.delete_button)
         control_layout.addWidget(self.delete_completed_button)
         control_layout.addWidget(self.transfer_button)
-        control_layout.addWidget(self.send_to_google_sheets_button)
+        control_layout.addWidget(self.send_to_google_sheets_button)  # Добавлено
 
         template_label_layout = QHBoxLayout()
         template_label = QLabel("Шаблон")
@@ -190,6 +250,11 @@ class QueueView(QWidget):
         self.next_vip_table.cellClicked.connect(self.change_status)
         self.next_regular_table.cellClicked.connect(self.change_status)
 
+        # Фильтрация по типу
+        self.filter_abyss_checkbox.stateChanged.connect(self.filter_by_type)
+        self.filter_theater_checkbox.stateChanged.connect(self.filter_by_type)
+        self.filter_overview_checkbox.stateChanged.connect(self.filter_by_type)
+
         # Горячие клавиши
         self.edit_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Return), self)
         self.edit_shortcut.activated.connect(self.toggle_edit_mode)
@@ -202,6 +267,31 @@ class QueueView(QWidget):
 
         self.toggle_hide_completed_shortcut_plus = QShortcut(QKeySequence(Qt.Key.Key_Plus), self)
         self.toggle_hide_completed_shortcut_plus.activated.connect(self.toggle_hide_completed)
+
+    # Фильтрация по типу
+    def filter_by_type(self):
+        if self.filter_abyss_checkbox.isChecked():
+            self.filter_theater_checkbox.setChecked(False)
+            self.filter_overview_checkbox.setChecked(False)
+            filter_type = "Бездна"
+        elif self.filter_theater_checkbox.isChecked():
+            self.filter_abyss_checkbox.setChecked(False)
+            self.filter_overview_checkbox.setChecked(False)
+            filter_type = "Театр"
+        elif self.filter_overview_checkbox.isChecked():
+            self.filter_abyss_checkbox.setChecked(False)
+            self.filter_theater_checkbox.setChecked(False)
+            filter_type = "Обзор"
+        else:
+            filter_type = None
+
+        for table in [self.current_vip_table, self.current_regular_table, self.next_vip_table, self.next_regular_table]:
+            for row in range(table.rowCount()):
+                item = table.item(row, 2)  # Тип находится в 3-м столбце
+                if item and (filter_type is None or item.text() == filter_type):
+                    table.setRowHidden(row, False)
+                else:
+                    table.setRowHidden(row, True)
 
     # Копирование текста в буфер обмена
     def copy_to_clipboard(self, text):
@@ -288,6 +378,18 @@ class QueueView(QWidget):
         self.update_counts()
         self.save_data()
 
+    # Добавление элемента в таблицу
+    def add_to_table(self, table, column, name, type_):
+        row_count = table.rowCount()
+        table.insertRow(row_count)
+        table.setItem(row_count, column, QTableWidgetItem(name))
+        table.setItem(row_count, column + 1, QTableWidgetItem("Ожидание"))
+        table.setItem(row_count, column + 2, QTableWidgetItem(type_))
+        table.setItem(row_count, column + 3, QTableWidgetItem(""))
+        self.set_row_color(table, row_count)
+        table.resizeColumnsToContents()
+
+    # Добавление коментария к новому элементу
     def add_comment_to_last_row(self, table, comment):
         row_count = table.rowCount()
         if row_count > 0:
@@ -295,18 +397,15 @@ class QueueView(QWidget):
             self.set_row_color(table, row_count - 1)
             table.resizeColumnsToContents()
 
-    # Добавление элемента в таблицу
-    def add_to_table(self, table, column, name, type_, customer=None):
-        row_count = table.rowCount()
-        table.insertRow(row_count)
-        table.setItem(row_count, column, QTableWidgetItem(name))
-        table.setItem(row_count, column + 1, QTableWidgetItem("Ожидание"))
-        table.setItem(row_count, column + 2, QTableWidgetItem(type_))
-        table.setItem(row_count, column + 3, QTableWidgetItem(customer if customer else ""))
-        self.set_row_color(table, row_count)
-        table.resizeColumnsToContents()
+    def set_row_color(self, table, row):
+        status_item = table.item(row, 1)
+        if status_item:
+            color = STATUS_COLOR.get(status_item.text(), QColor(255, 255, 255))
+            for column in range(table.columnCount()):
+                item = table.item(row, column)
+                if item:
+                    item.setBackground(color)
 
-    # Изменение статуса элемента в таблице
     def change_status(self, row, column):
         table = self.sender()
         if column == 1:
@@ -524,6 +623,7 @@ class QueueView(QWidget):
             json.dump(data, file, ensure_ascii=False, indent=4)
         self.update_output_file()
 
+
     def load_data(self):
         if os.path.exists(QUEUE_DATA_PATH):
             with open(QUEUE_DATA_PATH, "r", encoding="utf-8") as file:
@@ -537,14 +637,16 @@ class QueueView(QWidget):
                 self.update_counts()
         self.load_template()
 
-    def ensure_four_columns(self, data):
+    @staticmethod
+    def ensure_four_columns(data):
         for row in data:
             while len(row) < 4:
                 row.append("")
         return data
 
     # Получение данных из таблицы
-    def get_table_data(self, table):
+    @staticmethod
+    def get_table_data(table):
         data = []
         for row in range(table.rowCount()):
             row_data = []
@@ -569,6 +671,11 @@ class QueueView(QWidget):
                 table.setItem(row, column, item)
             self.set_row_color(table, row)
         table.resizeColumnsToContents()
+
+    def sync_with_google_sheets(self, data=None):
+        if self.google_sheets_sync:
+            self.sync_thread = SyncThread(self.google_sheets_sync, data)
+            self.sync_thread.start()
 
     # Установка цвета строки в таблице
     def set_row_color(self, table, row):
@@ -597,6 +704,7 @@ class QueueView(QWidget):
             return self.next_regular_table
         else:
             return self.current_vip_table
+
 
     def sync_with_google_sheets(self, sheets_data):
         if self.google_sheets_sync:
