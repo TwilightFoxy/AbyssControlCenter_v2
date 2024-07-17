@@ -27,6 +27,10 @@ _Эти инструкции нужны для функционала бота_
 Токен авторизации можно получить по ссылке: https://twitchtokengenerator.com Там же вы увидите REFRESH TOKEN и CLIENT ID.
 (Обратите внимание, что должны быть выданы разрешения на сообщения, либо на вопрос "Для чего вам нужен токен - выбрать чат-бот")
 
+<img width="539" alt="1" src="https://github.com/user-attachments/assets/957fa127-163d-42f4-b9fd-03b68bfb89b0">
+<img width="578" alt="2" src="https://github.com/user-attachments/assets/8cabac79-b4f8-41ba-a841-095632ebac92">
+<img width="600" alt="3" src="https://github.com/user-attachments/assets/8a31d199-684f-4730-9f20-7bfada11035e">
+
    - Необходимые права:
    - channel:read:redemptions : View your channel points custom reward redemptions.
    - channel:manage:redemptions : Manage Channel Points custom rewards and their redemptions on a channel.
